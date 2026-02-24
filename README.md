@@ -1,40 +1,46 @@
-# 🚀 Turbo Flow Claude v3.3.0
+# 🚀 Turbo Flow Claude v3.4.0
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-3.3.0-blue?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-3.4.0-blue?style=for-the-badge)
 ![Claude Flow](https://img.shields.io/badge/Claude_Flow-V3-purple?style=for-the-badge)
 ![RuVector](https://img.shields.io/badge/RuVector-Neural_Engine-green?style=for-the-badge)
-![Skills](https://img.shields.io/badge/Skills-41_Total-orange?style=for-the-badge)
+![Skills](https://img.shields.io/badge/Skills-56_Total-orange?style=for-the-badge)
+![Plugins](https://img.shields.io/badge/Plugins-15-critical?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-orange?style=for-the-badge)
 
-**⚡ Complete Agentic Development Environment — Claude Flow V3 + RuVector ⚡**
+**⚡ Complete Agentic Development Environment — Claude Flow V3 + RuVector + All Plugins ⚡**
 
-[Quick Start](#-quick-start) • [Installation](#-what-gets-installed) • [Skills](#-skills-41-total) • [Commands](#️-key-commands) • [Resources](#-resources)
+[Quick Start](#-quick-start) • [Installation](#-what-gets-installed) • [Skills](#-skills-41-total) • [Plugins](#-plugins-15-total) • [Commands](#️-key-commands) • [Resources](#-resources)
 
 </div>
 
 ---
 
-## 🆕 What's New in v3.3.0
+## 🆕 What's New in v3.4.0
 
-| Metric | v3.0.0 | v3.3.0 | Change |
+| Metric | v3.3.0 | v3.4.0 | Change |
 |--------|--------|--------|--------|
-| Native Skills | 6 | **36** | +500% |
-| Custom Skills | 4 | **5** | +25% |
-| Total Skills | 10 | **41** | +310% |
-| Bash Aliases | 25 | **50+** | +100% |
-| MCP Tools | 175+ | **175+** | — |
-| Installation Steps | 10 | **18** | +80% |
+| Native Skills | 36 | **36** | — |
+| Plugins | 0 | **15** | +15 ⭐ |
+| Custom Skills | 5 | **5** | — |
+| **Total Components** | **41** | **56** | +37% |
+| Bash Aliases | 50+ | **70+** | +40% |
+| Installation Steps | 18 | **19** | +1 |
 
-### Major Additions
+### Major Additions in v3.4.0
+
+- ✅ **15 Claude Flow Plugins** — Complete plugin coverage for domain-specific workflows
+- ✅ **Plugin Aliases** — Quick commands for all plugins
+- ✅ **70+ Bash Aliases** — Extended with plugin-specific shortcuts
+
+### From v3.3.0
 
 - ✅ **36 Native Claude Flow Skills** — Complete coverage of all available skills
 - ✅ **Memory System** — HNSW vector search, AgentDB, LearningBridge
 - ✅ **MCP Server Registration** — 175+ tools auto-registered
 - ✅ **Cyberpunk Statusline** — 15-component, 3-line status display
 - ✅ **Enhanced Verification** — post-setup.sh checks 100+ items
-- ✅ **50+ Bash Aliases** — All skill categories covered
 
 ---
 
@@ -42,7 +48,7 @@
 
 ```
 ╔══════════════════════════════════════════════════════════════════════╗
-║                       🚀 TURBO FLOW v3.3.0                           ║
+║                       🚀 TURBO FLOW v3.4.0                           ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  🖥️  INTERFACE                                                        ║
 ║  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐                  ║
@@ -63,6 +69,12 @@
 ║  ┌─────────────────────────────────────────────────────────────────┐ ║
 ║  │ Core(6) │ AgentDB(4) │ GitHub(4) │ V3Dev(9) │ Reasoning(2)    │ ║
 ║  │ FlowNexus(3) │ Additional(8) │ Custom(5)                       │ ║
+║  └─────────────────────────────────────────────────────────────────┘ ║
+╠══════════════════════════════════════════════════════════════════════╣
+║  🔌 PLUGINS (15 Total) ⭐ NEW                                        ║
+║  ┌─────────────────────────────────────────────────────────────────┐ ║
+║  │ QE(2) │ CodeIntel(1) │ Cognitive(2) │ Perf(3) │ Neural(2)     │ ║
+║  │ Domain(3) │ WASM(1) │ Upstream(1)                                │ ║
 ║  └─────────────────────────────────────────────────────────────────┘ ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║  💾 MEMORY SYSTEM                                                    ║
@@ -115,7 +127,7 @@ devpod up https://github.com/marcuspat/turbo-flow-claude --ide vscode
 
 ## 📦 What Gets Installed
 
-The `setup.sh` script installs the complete stack in **18 automated steps**:
+The `setup.sh` script installs the complete stack in **19 automated steps**:
 
 ### Step 1️⃣ Build Tools
 
@@ -157,7 +169,7 @@ The `setup.sh` script installs the complete stack in **18 automated steps**:
 | `pair-programming` | Driver/Navigator AI coding |
 | `hive-mind-advanced` | Queen-led collective intelligence |
 
-#### AgentDB Skills (4) ⭐ NEW
+#### AgentDB Skills (4)
 
 | Skill | Purpose |
 |:------|:--------|
@@ -166,7 +178,7 @@ The `setup.sh` script installs the complete stack in **18 automated steps**:
 | `agentdb-memory-patterns` | Session memory, pattern learning |
 | `agentdb-optimization` | Quantization (4-32x memory reduction) |
 
-#### GitHub Skills (4) ⭐ NEW
+#### GitHub Skills (4)
 
 | Skill | Purpose |
 |:------|:--------|
@@ -175,7 +187,7 @@ The `setup.sh` script installs the complete stack in **18 automated steps**:
 | `github-release-management` | Versioning, deployment, rollback |
 | `github-workflow-automation` | CI/CD pipeline automation |
 
-#### V3 Development Skills (9) ⭐ NEW
+#### V3 Development Skills (9)
 
 | Skill | Purpose |
 |:------|:--------|
@@ -189,14 +201,14 @@ The `setup.sh` script installs the complete stack in **18 automated steps**:
 | `v3-security-overhaul` | CVE remediation |
 | `v3-swarm-coordination` | 15-agent hierarchical mesh |
 
-#### ReasoningBank Skills (2) ⭐ NEW
+#### ReasoningBank Skills (2)
 
 | Skill | Purpose |
 |:------|:--------|
 | `reasoningbank-agentdb` | Trajectory tracking, memory distillation |
 | `reasoningbank-intelligence` | Pattern recognition, meta-cognition |
 
-#### Flow Nexus Skills (3) ⭐ NEW
+#### Flow Nexus Skills (3)
 
 | Skill | Purpose |
 |:------|:--------|
@@ -204,7 +216,7 @@ The `setup.sh` script installs the complete stack in **18 automated steps**:
 | `flow-nexus-platform` | Auth, sandboxes, app deployment |
 | `flow-nexus-swarm` | Cloud-based swarm deployment |
 
-#### Additional Skills (8) ⭐ NEW
+#### Additional Skills (8)
 
 | Skill | Purpose |
 |:------|:--------|
@@ -219,7 +231,61 @@ The `setup.sh` script installs the complete stack in **18 automated steps**:
 
 ---
 
-### Step 1️⃣1️⃣ Memory System ⭐ NEW
+### Step 1️⃣1️⃣ Claude Flow Plugins (15) ⭐ NEW
+
+#### Quality Engineering Plugins (2)
+
+| Plugin | Purpose |
+|:-------|:--------|
+| `agentic-qe` | Autonomous quality engineering, test generation |
+| `test-intelligence` | Smart test selection, coverage optimization |
+
+#### Code Intelligence Plugins (1)
+
+| Plugin | Purpose |
+|:-------|:--------|
+| `code-intelligence` | AST analysis, code understanding, refactoring |
+
+#### Cognitive Plugins (2)
+
+| Plugin | Purpose |
+|:-------|:--------|
+| `cognitive-kernel` | Meta-cognition, self-reflection, reasoning |
+| `hyperbolic-reasoning` | Hyperbolic geometry for complex reasoning |
+
+#### Performance Plugins (3)
+
+| Plugin | Purpose |
+|:-------|:--------|
+| `perf-optimizer` | Performance profiling, optimization suggestions |
+| `quantum-optimizer` | Quantum-inspired optimization algorithms |
+| `prime-radiant` | Predictive performance modeling |
+
+#### Neural Plugins (2)
+
+| Plugin | Purpose |
+|:-------|:--------|
+| `neural-coordination` | Multi-agent neural coordination |
+| `ruvector-upstream` | Direct RuVector integration |
+
+#### Domain-Specific Plugins (3)
+
+| Plugin | Purpose |
+|:-------|:--------|
+| `financial-risk` | Financial modeling, risk assessment |
+| `healthcare-clinical` | Clinical workflows, medical terminology |
+| `legal-contracts` | Contract analysis, legal document processing |
+
+#### Infrastructure Plugins (2)
+
+| Plugin | Purpose |
+|:-------|:--------|
+| `gastown-bridge` | WASM bridge for high-performance computing |
+| `teammate-plugin` | Team collaboration, role assignment |
+
+---
+
+### Step 1️⃣2️⃣ Memory System
 
 | Component | Performance |
 |:----------|:------------|
@@ -230,7 +296,7 @@ The `setup.sh` script installs the complete stack in **18 automated steps**:
 
 ---
 
-### Step 1️⃣2️⃣ MCP Server Registration ⭐ NEW
+### Step 1️⃣3️⃣ MCP Server Registration
 
 Automatic registration of Claude Flow MCP server:
 
@@ -245,7 +311,7 @@ Automatic registration of Claude Flow MCP server:
 
 ---
 
-### Steps 1️⃣3️⃣-1️⃣5️⃣ Custom Skills (5)
+### Steps 1️⃣4️⃣-1️⃣6️⃣ Custom Skills (5)
 
 | Skill | Source | Purpose |
 |:------|:-------|:--------|
@@ -257,7 +323,7 @@ Automatic registration of Claude Flow MCP server:
 
 ---
 
-### Step 1️⃣6️⃣ Statusline Pro ⭐ NEW
+### Step 1️⃣7️⃣ Statusline Pro
 
 15-component cyberpunk statusline across 3 lines:
 
@@ -269,7 +335,7 @@ LINE 3: ➕ Added │ ➖ Removed │ 📂 Git │ 🌳 Worktree │ 🔌 MCP �
 
 ---
 
-### Step 1️⃣7️⃣ Workspace Setup
+### Step 1️⃣8️⃣ Workspace Setup
 
 | Component | Purpose |
 |:----------|:--------|
@@ -281,7 +347,7 @@ LINE 3: ➕ Added │ ➖ Removed │ 📂 Git │ 🌳 Worktree │ 🔌 MCP �
 
 ---
 
-### Step 1️⃣8️⃣ Bash Aliases (50+)
+### Step 1️⃣9️⃣ Bash Aliases (70+)
 
 <table>
 <tr>
@@ -302,6 +368,7 @@ ruv-learn, ruv-init, ruv-viz
 cf, cf-init, cf-wizard
 cf-swarm, cf-mesh, cf-daemon
 cf-doctor, cf-mcp, cf-memory
+cf-plugin
 ```
 
 </td>
@@ -346,6 +413,46 @@ cf-gh-release, cf-gh-workflow
 cf-v3-cli, cf-v3-core
 cf-v3-ddd, cf-v3-perf
 cf-v3-security
+```
+
+</td>
+</tr>
+<tr>
+<td>
+
+**🔌 Plugins - QE**
+```
+plugin-qe, plugin-test-intel
+```
+
+</td>
+<td>
+
+**🔌 Plugins - Cognitive**
+```
+plugin-cognitive
+plugin-hyperbolic
+```
+
+</td>
+</tr>
+<tr>
+<td>
+
+**🔌 Plugins - Perf**
+```
+plugin-perf, plugin-quantum
+plugin-prime
+```
+
+</td>
+<td>
+
+**🔌 Plugins - Domain**
+```
+plugin-financial
+plugin-healthcare
+plugin-legal
 ```
 
 </td>
@@ -412,34 +519,48 @@ cf-verify, cf-perf-analyze
 | Additional | 8 | jujutsu, hooks, perf-analysis, skill-builder, stream, swarm-adv, verify, dual |
 | Custom | 5 | security-analyzer, ui-ux-pro-max, worktree-manager, vercel-deploy, rUv_helpers |
 
-### Skills by Function
+---
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                  SKILLS FUNCTIONAL DOMAINS                      │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  DEVELOPMENT          sparc, pair-programming, skill-builder   │
-│  METHODOLOGY          v3-ddd-architecture, v3-core             │
-│                                                                 │
-│  MULTI-AGENT          swarm-orchestration, hive-mind-advanced  │
-│  COORDINATION         v3-swarm-coordination, swarm-advanced    │
-│                                                                 │
-│  MEMORY &             agentdb-*, reasoningbank-*,              │
-│  LEARNING             v3-memory-unification                     │
-│                                                                 │
-│  GITHUB &             github-code-review, github-multi-repo,   │
-│  INTEGRATION          github-project-management, etc.          │
-│                                                                 │
-│  PERFORMANCE &        v3-performance-optimization,             │
-│  QUALITY              verification-quality, performance-analysis│
-│                                                                 │
-│  SECURITY             security-analyzer, v3-security-overhaul  │
-│                                                                 │
-│  CLOUD &              flow-nexus-*, vercel-deploy              │
-│  DEPLOYMENT                                                    │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+## 🔌 Plugins (15 Total)
+
+### Plugins by Category
+
+| Category | Count | Plugins |
+|:---------|:------|:--------|
+| Quality Engineering | 2 | agentic-qe, test-intelligence |
+| Code Intelligence | 1 | code-intelligence |
+| Cognitive | 2 | cognitive-kernel, hyperbolic-reasoning |
+| Performance | 3 | perf-optimizer, quantum-optimizer, prime-radiant |
+| Neural | 2 | neural-coordination, ruvector-upstream |
+| Domain-Specific | 3 | financial-risk, healthcare-clinical, legal-contracts |
+| Infrastructure | 2 | gastown-bridge, teammate-plugin |
+
+### Plugin Quick Commands
+
+```bash
+# Quality Engineering
+plugin-qe              # Run agentic-qe
+plugin-test-intel      # Run test-intelligence
+
+# Code Intelligence
+plugin-code-intel      # Run code-intelligence
+
+# Cognitive
+plugin-cognitive       # Run cognitive-kernel
+plugin-hyperbolic      # Run hyperbolic-reasoning
+
+# Performance
+plugin-perf            # Run perf-optimizer
+plugin-quantum         # Run quantum-optimizer
+plugin-prime           # Run prime-radiant
+
+# Neural
+plugin-neural          # Run neural-coordination
+
+# Domain
+plugin-financial       # Run financial-risk
+plugin-healthcare      # Run healthcare-clinical
+plugin-legal           # Run legal-contracts
 ```
 
 ---
@@ -490,6 +611,22 @@ cf-verify, cf-perf-analyze
 ├── 📁 .claude-flow/
 │   ├── 📁 memory/
 │   │   └── 🗄️ agent.db
+│   ├── 📁 plugins/          ⭐ NEW
+│   │   ├── agentic-qe/
+│   │   ├── code-intelligence/
+│   │   ├── cognitive-kernel/
+│   │   ├── financial-risk/
+│   │   ├── gastown-bridge/
+│   │   ├── healthcare-clinical/
+│   │   ├── hyperbolic-reasoning/
+│   │   ├── legal-contracts/
+│   │   ├── neural-coordination/
+│   │   ├── perf-optimizer/
+│   │   ├── prime-radiant/
+│   │   ├── quantum-optimizer/
+│   │   ├── ruvector-upstream/
+│   │   ├── teammate-plugin/
+│   │   └── test-intelligence/
 │   └── ⚙️ config.json
 ├── 📁 node_modules/@heroui/
 ├── 🤝 AGENTS.md
@@ -528,7 +665,7 @@ npm install -g @openai/codex && codex login
 <summary><b>📊 Status & Help</b></summary>
 
 ```bash
-turbo-status    # Check all 41 skills + 100+ items
+turbo-status    # Check all 56 components + 100+ items
 turbo-help      # Complete command reference
 cf-doctor       # Claude Flow health check
 ```
@@ -559,6 +696,7 @@ cf-doctor            # Health check
 cf-daemon            # Start daemon
 cf-mcp               # Start MCP server
 cf-memory            # Memory operations
+cf-plugin            # Plugin management
 ```
 </details>
 
@@ -594,6 +732,36 @@ cf-gh-multi          # Multi-repo coordination
 cf-gh-project        # Project management
 cf-gh-release        # Release management
 cf-gh-workflow       # CI/CD automation
+```
+</details>
+
+<details>
+<summary><b>🔌 Plugins</b></summary>
+
+```bash
+# Quality Engineering
+plugin-qe            # Agentic QE
+plugin-test-intel    # Test intelligence
+
+# Code Intelligence
+plugin-code-intel    # Code understanding
+
+# Cognitive
+plugin-cognitive     # Cognitive kernel
+plugin-hyperbolic    # Hyperbolic reasoning
+
+# Performance
+plugin-perf          # Performance optimizer
+plugin-quantum       # Quantum optimizer
+plugin-prime         # Prime radiant
+
+# Neural
+plugin-neural        # Neural coordination
+
+# Domain-Specific
+plugin-financial     # Financial risk
+plugin-healthcare    # Healthcare clinical
+plugin-legal         # Legal contracts
 ```
 </details>
 
@@ -653,8 +821,8 @@ cf-perf-analyze      # Performance analysis
 
 | Document | Description |
 |:---------|:------------|
-| `RELEASE_NOTES_v3.3.0.md` | Full release notes |
-| `Turbo_Flow_v3.3.0_Scripts_Analysis.md` | Technical analysis (1,500+ lines) |
+| `RELEASE_NOTES_v3.4.0.md` | Full release notes |
+| `Turbo_Flow_v3.4.0_Scripts_Analysis.md` | Technical analysis |
 | `.claude-flow-prompts.md` | 35+ usage prompts |
 
 ---
@@ -677,7 +845,8 @@ cf-perf-analyze      # Performance analysis
 
 | Version | Date | Changes |
 |:--------|:-----|:--------|
-| **v3.3.0** | Feb 2025 | Complete installation: 41 skills, memory system, MCP registration, 50+ aliases |
+| **v3.4.0** | Feb 2025 | **Complete + Plugins**: 36 skills, 15 plugins, 5 custom, 70+ aliases |
+| v3.3.0 | Feb 2025 | Complete installation: 41 skills, memory system, MCP registration, 50+ aliases |
 | v3.2.0 | Feb 2025 | Added 6 native skills, memory init, MCP registration |
 | v3.1.0 | Feb 2025 | Added worktree-manager, vercel-deploy, statusline pro |
 | v3.0.0 | Feb 2025 | Initial release with Claude Flow V3 |
@@ -688,8 +857,8 @@ cf-perf-analyze      # Performance analysis
 
 **Built with 💜 for the Claude ecosystem**
 
-![Version](https://img.shields.io/badge/v3.3.0-2025--02-blue?style=flat-square)
+![Version](https://img.shields.io/badge/v3.4.0-2025--02-blue?style=flat-square)
 
-*All 41 skills. All 175+ MCP tools. All 50+ aliases. One command.*
+*All 41 skills. All 15 plugins. All 175+ MCP tools. All 70+ aliases. One command.*
 
 </div>
