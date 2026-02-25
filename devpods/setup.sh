@@ -492,7 +492,13 @@ else
     mkdir -p "$WORKTREE_SKILL_DIR"
     status "Cloning worktree-manager (HTTPS)"
     if git clone --depth 1 https://github.com/Wirasm/worktree-manager-skill.git "$WORKTREE_SKILL_DIR" 2>/dev/null; then
-        ok "worktree-manager skill installed"
+        # Extract skill from nested .claude/skills/ structure
+        if [ -d "$WORKTREE_SKILL_DIR/.claude/skills" ]; then
+            cp -r "$WORKTREE_SKILL_DIR/.claude/skills/"* "$WORKTREE_SKILL_DIR/" 2>/dev/null
+            ok "worktree-manager skill installed (extracted from nested structure)"
+        else
+            ok "worktree-manager skill installed"
+        fi
     else
         status "Trying SSH..."
         if git clone --depth 1 git@github.com:Wirasm/worktree-manager-skill.git "$WORKTREE_SKILL_DIR" 2>/dev/null; then
@@ -890,6 +896,11 @@ step_header "Running Claude Flow Doctor"
 
 status "Running diagnostics..."
 npx -y claude-flow@alpha doctor 2>&1 | head -30 || true
+
+# Clear npx cache to fix stale version warnings (v0.0.0 issue)
+status "Clearing npx cache..."
+npx clear-npx-cache 2>/dev/null || npm cache clean --force 2>/dev/null || true
+ok "Cache cleared"
 
 info "Elapsed: $(elapsed)"
 
