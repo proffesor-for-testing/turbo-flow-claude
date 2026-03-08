@@ -24,9 +24,10 @@ Validated against: Anthropic's 2026 Agentic Coding Trends Report, PACT framework
 
 TurboFlow v4.0 follows three principles validated by research:
 
-1. **Plan cheap, execute expensive** — Use minimal tokens to plan (Phase 1). Use swarms for parallel execution (Phase 3). Never skip planning.
-2. **One bounded context per agent** — Each agent owns a single DDD bounded context with clear boundaries. Agents crossing context boundaries cause drift and merge conflicts.
-3. **QE gates are phase transitions** — The Agentic QE pipeline runs after every ADR, every bounded context, every phase. Nothing moves forward until QE passes.
+1. **PRD first, always** — Every project starts with a Product Requirements Document saved to `plans/research/PLAN.md`. This is the input that drives ADR/DDD planning. No PRD, no plan.
+2. **Plan cheap, execute expensive** — Use minimal tokens to plan (Phase 1). Use swarms for parallel execution (Phase 3). Never skip planning.
+3. **One bounded context per agent** — Each agent owns a single DDD bounded context with clear boundaries. Agents crossing context boundaries cause drift and merge conflicts.
+4. **QE gates are phase transitions** — The Agentic QE pipeline runs after every ADR, every bounded context, every phase. Nothing moves forward until QE passes.
 
 Additional disciplines:
 
@@ -291,12 +292,38 @@ GitNexus runs as an MCP server — Claude Code agents get knowledge graph tools 
 
 ## The Core Workflow
 
+### Phase 0.5: Generate the PRD
+
+Every project starts here. The PRD is the input that drives ADR/DDD planning.
+
+**Prompt:**
+
+> I want to build [describe the product/feature/system]. Generate a comprehensive Product Requirements Document covering: problem statement, target users, success criteria, functional requirements (P0/P1/P2 with user stories and acceptance criteria), non-functional requirements (performance, security, scalability, accessibility), technical constraints, required integrations, and out-of-scope items. Save to `plans/research/PLAN.md`.
+
+After the PRD is saved:
+
+```bash
+mkdir -p plans/research
+aqe-generate           # Validate PRD completeness
+aqe-gate               # QE gate — every feature must have acceptance criteria
+bd add --type decision "PRD complete — plans/research/PLAN.md — QE passed"
+gnx-analyze
+```
+
+**If you already have research:** Put your notes/specs in `plans/research/` and ask Claude to consolidate into a single PRD at `plans/research/PLAN.md`.
+
+**If extending an existing project:** Ask Claude to analyze the codebase with GitNexus first, then generate a PRD that references existing bounded contexts, ADRs, and blast-radius analysis.
+
+**QE Gate:** PRD must pass before planning begins. Every feature needs testable acceptance criteria. No ambiguous requirements.
+
+---
+
 ### Phase 1: Plan (ADR/DDD)
 
 > Review the `/plans/research` and create a detailed ADR/DDD implementation using all the various capabilities of Ruflo self-learning, security, hooks, and other optimizations. Spawn swarm, do not implement yet.
 
 This prompt:
-- Reads your research
+- Reads the PRD from `plans/research/PLAN.md`
 - Creates ADRs in `docs/adr/` (each with the 5-point Definition of Done)
 - Identifies bounded contexts with aggregates, entities, value objects, domain events
 - Maps each context to swarm topology, hooks strategy, security requirements
@@ -519,6 +546,7 @@ Then: `wt-add feature-[name]` → implement → QE gate (`aqe-generate` + `aqe-g
 
 ```
 BOOT:       source ~/.bashrc → rf-wizard → rf-doctor → bd-ready → gnx-analyze → hooks-train → rf-daemon
+PRD:        generate PRD → save to plans/research/PLAN.md → QE gate
 PLAN:       review /plans/research → create ADR/DDD → QE gate per ADR → QE gate on full plan
 CUSTOMIZE:  update CLAUDE.md → update statusline → hooks-train → gnx-analyze → QE gate
 EXECUTE:    rf-swarm → agents in worktrees → QE gate per context → QE gate full codebase
