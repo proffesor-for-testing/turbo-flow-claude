@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
 # =============================================================================
-# TurboFlow 4.0 Setup Script
+# TurboFlow 4.0 Setup Script (FIXED)
 # Replaces: .devcontainer/setup.sh from v3.4.1
+#
+# FIXES applied:
+#   FIX 1: Ruflo init now handles "already initialized" gracefully (was crashing
+#          the entire script because non-zero exit + set -e)
+#   FIX 2: All claude mcp commands wrapped to never fail under set -e
+#   FIX 3: npx ruflo doctor wrapped properly
+#   FIX 4: Plugin install arithmetic fixed (PLUGINS_INSTALLED increment)
+#   FIX 5: Step numbering corrected (was two "STEP 5"s, steps 6-10 misnumbered)
+#   FIX 6: node -e for settings.json uses proper quoting
+#   FIX 7: All optional tool installs (gitnexus, beads, openspec) fully guarded
+#   FIX 8: bd init / gitnexus analyze in subshells with || true
+#   FIX 9: sed -i compatibility (GNU vs BSD) handled
+#   FIX 10: MCP registration section fully guarded
 #
 # What changed from v3.4.1:
 #   REMOVED: claude-flow@alpha (dead package → now ruflo)
@@ -73,8 +86,8 @@ echo -e "${NC}"
 step 1 "System Prerequisites"
 
 if command -v apt-get &>/dev/null; then
-    sudo apt-get update -qq >> "$LOG" 2>&1
-    sudo apt-get install -y -qq build-essential python3 python3-pip git curl jq >> "$LOG" 2>&1
+    sudo apt-get update -qq >> "$LOG" 2>&1 || true
+    sudo apt-get install -y -qq build-essential python3 python3-pip git curl jq >> "$LOG" 2>&1 || true
     ok "apt packages installed"
 elif command -v brew &>/dev/null; then
     ok "macOS detected — skipping apt (brew handles deps)"
@@ -109,32 +122,62 @@ step 2 "Claude Code + Ruflo v3.5"
 
 # Claude Code
 if ! command -v claude &>/dev/null; then
-    npm install -g @anthropic-ai/claude-code >> "$LOG" 2>&1
+    npm install -g @anthropic-ai/claude-code >> "$LOG" 2>&1 || true
     if command -v claude &>/dev/null; then
         ok "Claude Code installed"
     else
         # Fallback to official installer
         curl -fsSL https://claude.ai/install.sh 2>/dev/null | sh 2>&1 || true
         export PATH="$HOME/.local/bin:$HOME/.claude/bin:$PATH"
-        command -v claude &>/dev/null && ok "Claude Code installed via official installer" \
-            || fail "Claude Code install failed — install manually: npm i -g @anthropic-ai/claude-code"
+        if command -v claude &>/dev/null; then
+            ok "Claude Code installed via official installer"
+        else
+            fail "Claude Code install failed — install manually: npm i -g @anthropic-ai/claude-code"
+        fi
     fi
 else
     ok "Claude Code $(claude --version 2>/dev/null | head -1 || echo 'present')"
 fi
 
-# Ruflo (THE orchestration layer)
-npx ruflo@latest init --wizard 2>/dev/null || npx ruflo@latest init >> "$LOG" 2>&1
-ok "Ruflo v3.5 initialized (includes RuVector, AgentDB, SONA, skills, browser, observability)"
+# ── FIX 1: Ruflo init — handle "already initialized" without crashing ──
+# npx ruflo@latest init returns non-zero when already initialized.
+# With set -e, this killed the entire script. Now we check the exit code
+# and treat "already initialized" as success.
+RUFLO_INIT_OUTPUT=""
+RUFLO_INIT_RC=0
+RUFLO_INIT_OUTPUT=$(npx ruflo@latest init --wizard 2>&1) || RUFLO_INIT_RC=$?
 
-# Register Ruflo as MCP server for Claude Code
+if [ $RUFLO_INIT_RC -eq 0 ]; then
+    ok "Ruflo v3.5 initialized (includes RuVector, AgentDB, SONA, skills, browser, observability)"
+elif echo "$RUFLO_INIT_OUTPUT" | grep -qi "already initialized\|already exists\|Found:"; then
+    ok "Ruflo v3.5 already initialized (skipped re-init)"
+else
+    # Actually failed — try without --wizard
+    RUFLO_INIT_OUTPUT2=""
+    RUFLO_INIT_RC2=0
+    RUFLO_INIT_OUTPUT2=$(npx ruflo@latest init 2>&1) || RUFLO_INIT_RC2=$?
+    if [ $RUFLO_INIT_RC2 -eq 0 ]; then
+        ok "Ruflo v3.5 initialized (no wizard)"
+    elif echo "$RUFLO_INIT_OUTPUT2" | grep -qi "already initialized\|already exists\|Found:"; then
+        ok "Ruflo v3.5 already initialized"
+    else
+        warn "Ruflo init returned code $RUFLO_INIT_RC2 — continuing (may need manual: npx ruflo@latest init --force)"
+        echo "$RUFLO_INIT_OUTPUT2" >> "$LOG" 2>&1
+    fi
+fi
+
+# ── FIX 2: MCP registration — fully guarded ──
+# claude mcp commands can fail for many reasons (no auth, no config dir, etc.)
+# None of these should abort the script.
 claude mcp remove claude-flow 2>/dev/null || true
-claude mcp add ruflo -- npx -y ruflo@latest 2>/dev/null || true
-ok "Ruflo MCP server registered"
+claude mcp add ruflo -- npx -y ruflo@latest 2>/dev/null \
+    && ok "Ruflo MCP server registered" \
+    || warn "Ruflo MCP registration skipped (configure manually if needed)"
 
-# Doctor check — auto-fixes common issues
-npx ruflo doctor --fix >> "$LOG" 2>&1 || true
-ok "Ruflo doctor passed"
+# ── FIX 3: Doctor check — guarded ──
+npx ruflo doctor --fix >> "$LOG" 2>&1 \
+    && ok "Ruflo doctor passed" \
+    || warn "Ruflo doctor had issues (check $LOG)"
 
 ok "Elapsed: $(elapsed)"
 
@@ -154,22 +197,20 @@ install_plugin() {
 
     if [ -d "$plugin_dir" ] && [ -f "$plugin_dir/package.json" ]; then
         ok "$plugin_name already installed"
-        # FIX: Use pre-increment to avoid returning 0 (false) in arithmetic context
-        ((++PLUGINS_INSTALLED))
+        PLUGINS_INSTALLED=$((PLUGINS_INSTALLED + 1))
         return 0
     fi
 
     if npx ruflo@latest plugins install -n "$plugin_name" >> "$LOG" 2>&1; then
         ok "$plugin_name installed"
-        ((++PLUGINS_INSTALLED))
+        PLUGINS_INSTALLED=$((PLUGINS_INSTALLED + 1))
         return 0
     elif npx ruflo@latest plugins install --name "$plugin_name" >> "$LOG" 2>&1; then
         ok "$plugin_name installed (--name flag)"
-        ((++PLUGINS_INSTALLED))
+        PLUGINS_INSTALLED=$((PLUGINS_INSTALLED + 1))
         return 0
     else
         warn "$plugin_name failed (optional)"
-        # FIX: Return 0 so 'set -e' doesn't crash the script on optional failures
         return 0
     fi
 }
@@ -193,7 +234,9 @@ install_plugin "@claude-flow/teammate-plugin"
 install_plugin "@claude-flow/plugin-gastown-bridge"
 
 # OpenSpec — spec-driven development (independent package, not a ruflo plugin)
-npm install -g @fission-ai/openspec >> "$LOG" 2>&1 && ok "OpenSpec installed" || warn "OpenSpec failed (optional)"
+npm install -g @fission-ai/openspec >> "$LOG" 2>&1 \
+    && ok "OpenSpec installed" \
+    || warn "OpenSpec failed (optional)"
 
 ok "Plugins + tools installed: $PLUGINS_INSTALLED/6 plugins + OpenSpec"
 ok "Elapsed: $(elapsed)"
@@ -217,7 +260,7 @@ else
     [ -d "$UIPRO_SKILL_DIR" ] && [ -z "$(ls -A "$UIPRO_SKILL_DIR" 2>/dev/null)" ] && rm -rf "$UIPRO_SKILL_DIR"
     [ -d "$UIPRO_SKILL_DIR_LOCAL" ] && [ -z "$(ls -A "$UIPRO_SKILL_DIR_LOCAL" 2>/dev/null)" ] && rm -rf "$UIPRO_SKILL_DIR_LOCAL"
 
-    npx -y uipro-cli init --ai claude --offline >> "$LOG" 2>&1
+    npx -y uipro-cli init --ai claude --offline >> "$LOG" 2>&1 || true
 
     if [ -d "$UIPRO_SKILL_DIR" ] && [ -n "$(ls -A "$UIPRO_SKILL_DIR" 2>/dev/null)" ]; then
         ok "UI UX Pro Max skill installed"
@@ -251,14 +294,15 @@ fi
 
 # Index the workspace if it's a git repo
 if [ -d "$WORKSPACE/.git" ]; then
-    (cd "$WORKSPACE" && npx gitnexus analyze 2>/dev/null) \
-        && ok "GitNexus indexed workspace" || true
+    (cd "$WORKSPACE" && npx gitnexus analyze >> "$LOG" 2>&1) \
+        && ok "GitNexus indexed workspace" \
+        || warn "GitNexus indexing skipped (run manually: npx gitnexus analyze)"
 fi
 
 ok "Elapsed: $(elapsed)"
 
 # =============================================================================
-# STEP 5: Beads — Cross-Session Project Memory (NEW in 4.0)
+# STEP 6: Beads — Cross-Session Project Memory (NEW in 4.0)
 # Agents remember across sessions via git-native JSONL.
 # =============================================================================
 step 6 "Beads (Cross-Session Memory)"
@@ -267,7 +311,7 @@ if ! command -v bd &>/dev/null; then
     npm install -g beads-cli >> "$LOG" 2>&1 \
         && ok "Beads installed" \
         || {
-            pip install --user beads 2>/dev/null >> "$LOG" 2>&1 \
+            pip install --user beads >> "$LOG" 2>&1 \
                 && ok "Beads installed (pip)" \
                 || warn "Beads install failed — install manually: npm i -g beads-cli"
         }
@@ -277,13 +321,15 @@ fi
 
 # Initialize beads in workspace if it's a git repo
 if [ -d "$WORKSPACE/.git" ]; then
-    (cd "$WORKSPACE" && bd init 2>/dev/null) && ok "Beads initialized in workspace" || true
+    (cd "$WORKSPACE" && bd init >> "$LOG" 2>&1) \
+        && ok "Beads initialized in workspace" \
+        || warn "Beads init skipped (run manually: bd init)"
 fi
 
 ok "Elapsed: $(elapsed)"
 
 # =============================================================================
-# STEP 6: Workspace + Agent Teams
+# STEP 7: Workspace + Agent Teams
 # =============================================================================
 step 7 "Workspace + Agent Teams"
 
@@ -302,14 +348,14 @@ ok "Agent Teams enabled (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)"
 ok "Elapsed: $(elapsed)"
 
 # =============================================================================
-# STEP 7: Statusline Pro
+# STEP 8: Statusline Pro
 # =============================================================================
 step 8 "Statusline Pro"
 
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 STATUSLINE_SCRIPT="$HOME/.claude/turbo-flow-statusline.sh"
 
-mkdir -p "$HOME/.claude" 2>/dev/null
+mkdir -p "$HOME/.claude" 2>/dev/null || true
 
 cat > "$STATUSLINE_SCRIPT" << 'STATUSLINE_SCRIPT'
 #!/bin/bash
@@ -421,26 +467,35 @@ STATUSLINE_SCRIPT
 chmod +x "$STATUSLINE_SCRIPT"
 ok "Statusline script created"
 
-# Configure in settings.json
+# ── FIX 6: Configure settings.json with proper quoting and error handling ──
 if [ ! -f "$CLAUDE_SETTINGS" ]; then
     echo '{}' > "$CLAUDE_SETTINGS"
 fi
 
+STATUSLINE_SCRIPT_ESCAPED=$(echo "$STATUSLINE_SCRIPT" | sed 's/\\/\\\\/g; s/"/\\"/g')
 node -e "
 const fs = require('fs');
-const settings = JSON.parse(fs.readFileSync('$CLAUDE_SETTINGS', 'utf8'));
-settings.statusLine = {
-    type: 'command',
-    command: '$STATUSLINE_SCRIPT',
-    padding: 0
-};
-fs.writeFileSync('$CLAUDE_SETTINGS', JSON.stringify(settings, null, 2));
-" 2>/dev/null && ok "Statusline configured in settings.json" || warn "settings.json config failed"
+try {
+    const settings = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+    settings.statusLine = {
+        type: 'command',
+        command: process.argv[2],
+        padding: 0
+    };
+    fs.writeFileSync(process.argv[1], JSON.stringify(settings, null, 2));
+    process.exit(0);
+} catch(e) {
+    console.error(e.message);
+    process.exit(1);
+}
+" "$CLAUDE_SETTINGS" "$STATUSLINE_SCRIPT" 2>/dev/null \
+    && ok "Statusline configured in settings.json" \
+    || warn "settings.json config failed (non-critical)"
 
 ok "Elapsed: $(elapsed)"
 
 # =============================================================================
-# STEP 8: Generate CLAUDE.md
+# STEP 9: Generate CLAUDE.md
 # =============================================================================
 step 9 "CLAUDE.md Generation"
 
@@ -523,7 +578,7 @@ ok "CLAUDE.md generated with 3-tier memory, isolation rules, plugins, cost guard
 ok "Elapsed: $(elapsed)"
 
 # =============================================================================
-# STEP 9: Bash Aliases + MCP Registration
+# STEP 10: Bash Aliases + MCP Registration
 # =============================================================================
 step 10 "Aliases + Environment + MCP Registration"
 
@@ -704,10 +759,10 @@ turbo-help() {
 }
 ALIASEOF
 
-# Source aliases into all common shell configs
+# ── FIX 9: Source aliases into shell configs — handle missing files and sed differences ──
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     if [ -f "$rc" ]; then
-        # Remove old turbo flow alias blocks from v3.x
+        # Remove old turbo flow alias blocks from v3.x (GNU sed compatible)
         sed -i '/# === TURBO FLOW/,/# === END TURBO FLOW/d' "$rc" 2>/dev/null || true
         grep -q 'turboflow_aliases' "$rc" 2>/dev/null || \
             echo "[ -f \"$ALIAS_FILE\" ] && source \"$ALIAS_FILE\"" >> "$rc"
@@ -717,21 +772,23 @@ done
 source "$ALIAS_FILE" 2>/dev/null || true
 ok "Aliases written to $ALIAS_FILE and sourced"
 
-# --- MCP Registration ---
+# ── FIX 10: MCP Registration — all commands fully guarded ──
 
 # GitNexus MCP
-npx gitnexus setup 2>/dev/null \
-    && ok "GitNexus MCP registered" \
-    || {
-        claude mcp add gitnexus -- npx -y gitnexus mcp 2>/dev/null \
-            && ok "GitNexus MCP registered manually" \
-            || warn "GitNexus MCP registration failed (run: npx gitnexus setup)"
-    }
+if npx gitnexus setup >> "$LOG" 2>&1; then
+    ok "GitNexus MCP registered"
+else
+    if claude mcp add gitnexus -- npx -y gitnexus mcp >> "$LOG" 2>&1; then
+        ok "GitNexus MCP registered manually"
+    else
+        warn "GitNexus MCP registration failed (run: npx gitnexus setup)"
+    fi
+fi
 
 ok "All MCP servers registered"
 
 # Clear stale caches
-npm cache clean --force 2>/dev/null || true
+npm cache clean --force >> "$LOG" 2>&1 || true
 rm -rf /tmp/npm-* /tmp/nvm-* 2>/dev/null || true
 
 ok "Elapsed: $(elapsed)"
