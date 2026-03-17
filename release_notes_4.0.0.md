@@ -43,7 +43,7 @@ All `cf-*` aliases are replaced by `rf-*` aliases.
 
 ### Beads — Cross-Session Project Memory
 
-Agents now remember across sessions. Beads stores issues, decisions, and blockers as git-native JSONL files. The CLAUDE.md template includes a mandatory memory protocol: `bd ready` at session start, `bd add` during work, and automatic AgentDB persistence at session end. This is the three-tier memory system the v3.x PRD called for but never shipped.
+Agents now remember across sessions. Beads stores issues, decisions, and blockers as git-native JSONL files. The CLAUDE.md template includes a mandatory memory protocol: `bd ready` at session start, `bd create` during work, and automatic AgentDB persistence at session end. This is the three-tier memory system the v3.x PRD called for but never shipped.
 
 ### GitNexus — Codebase Knowledge Graph
 
@@ -171,20 +171,16 @@ The workspace context file is completely new. It includes the three-tier memory 
 
 ```
 turbo-flow/
-├── v3/                          ← archived v3.0-v3.4.1 (Claude Flow era)
-├── v4/                          ← active development (Ruflo era)
-│   ├── .devcontainer/
-│   │   ├── devcontainer.json
-│   │   ├── setup-turboflow-4.sh       (771 lines, 10 steps)
-│   │   └── post-setup-turboflow-4.sh  (488 lines, 13 checks)
-│   ├── scripts/
-│   │   └── generate-claude-md.sh
-│   ├── CLAUDE.md
-│   └── README.md
-├── docs/
-│   ├── migration-v3-to-v4.md
-│   └── release-notes-v4.0.0.md
-├── CLAUDE.md                    ← root, points to v4/
+├── V3/                          ← archived v3.0-v3.4.1 (Claude Flow era)
+├── .claude/                     ← skills, agents, settings
+├── .devcontainer/
+│   ├── devcontainer.json
+│   ├── setup-turboflow-4.sh       (771 lines, 10 steps)
+│   └── post-setup-turboflow-4.sh  (488 lines, 13 checks)
+├── scripts/
+│   └── generate-claude-md.sh
+├── devpods/context/            ← devpod context files
+├── CLAUDE.md                    ← workspace context (active)
 └── README.md
 ```
 
