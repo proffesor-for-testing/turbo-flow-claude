@@ -172,9 +172,11 @@ fi
 # ── FIX 2 + FIX 12: MCP registration — fully guarded, timeout added to prevent
 # auth-prompt hang on claude mcp add ──
 claude mcp remove claude-flow 2>/dev/null || true
-timeout 30 claude mcp add ruflo -- npx -y ruflo@latest 2>/dev/null \
-    && ok "Ruflo MCP server registered" \
-    || warn "Ruflo MCP registration skipped (configure manually if needed)"
+# Register at user scope so it persists across all workspaces
+timeout 30 claude mcp add ruflo --scope user -- npx -y ruflo@latest 2>/dev/null     && ok "Ruflo MCP server registered (user scope)"     || {
+        # Fallback: try without --scope for older claude versions
+        timeout 30 claude mcp add ruflo -- npx -y ruflo@latest 2>/dev/null             && ok "Ruflo MCP server registered"             || warn "Ruflo MCP registration skipped (configure manually if needed)"
+    }
 
 # ── FIX 3: Doctor check — guarded ──
 timeout 60 npx ruflo doctor >> "$LOG" 2>&1 \
@@ -195,9 +197,12 @@ PLUGINS_INSTALLED=0
 
 install_plugin() {
     local plugin_name="$1"
-    local plugin_dir="$WORKSPACE/.claude-flow/plugins/$plugin_name"
+    # Check multiple possible install locations ruflo uses
+    local plugin_dir_workspace="$WORKSPACE/.claude-flow/plugins/$plugin_name"
+    local plugin_dir_home="$HOME/.claude-flow/plugins/$plugin_name"
+    local plugin_dir_ruflo="$HOME/.ruflo/plugins/$plugin_name"
 
-    if [ -d "$plugin_dir" ] && [ -f "$plugin_dir/package.json" ]; then
+    if { [ -d "$plugin_dir_workspace" ] && [ -f "$plugin_dir_workspace/package.json" ]; } ||        { [ -d "$plugin_dir_home" ] && [ -f "$plugin_dir_home/package.json" ]; } ||        { [ -d "$plugin_dir_ruflo" ] && [ -f "$plugin_dir_ruflo/package.json" ]; }; then
         ok "$plugin_name already installed"
         PLUGINS_INSTALLED=$((PLUGINS_INSTALLED + 1))
         return 0
@@ -456,12 +461,17 @@ ok "Workspace directories created"
 # Enable Native Agent Teams (Anthropic experimental) — export for current session
 # AND persist to shell rc files so it survives container restarts
 export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+# Persist to interactive shells (.bashrc / .zshrc)
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     if [ -f "$rc" ]; then
         grep -q 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS' "$rc" 2>/dev/null ||             echo 'export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1' >> "$rc"
     fi
 done
-ok "Agent Teams enabled and persisted to shell rc (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)"
+# Also write to /etc/environment so non-interactive/non-login shells pick it up
+if [ -f /etc/environment ]; then
+    grep -q 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS' /etc/environment 2>/dev/null ||         echo 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1' | sudo tee -a /etc/environment >> "$LOG" 2>&1
+fi
+ok "Agent Teams enabled and persisted to .bashrc, .zshrc, /etc/environment"
 
 ok "Elapsed: $(elapsed)"
 
