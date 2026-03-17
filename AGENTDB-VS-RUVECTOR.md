@@ -1,5 +1,7 @@
 # AgentDB vs RuVector - Usage Guide
 
+> **DEPRECATION NOTICE:** This document was written for Claude Flow V3. In Turbo Flow V4, Ruflo v3.5 bundles both AgentDB and RuVector — there is no separate installation. All `claude-flow` CLI commands below should be replaced with `npx ruflo@latest` equivalents. See the V4 Quick Reference Guide for current commands. This file is preserved for historical context.
+
 **When to use AgentDB versus RuVector in Claude Flow V3**
 
 ---
@@ -1125,15 +1127,13 @@ claude-flow doctor
 
 ### AgentDB Documentation
 
-- Package: `@claude-flow/memory`
-- README: `/home/lyle/dev/claude-flow/v3/@claude-flow/memory/README.md`
+- Package: `@claude-flow/memory` (bundled in Ruflo v3.5)
 - ADR: ADR-006 (Unified Memory Service)
 - ADR: ADR-009 (Hybrid Backend)
 
 ### RuVector Documentation
 
-- Package: `ruvector` (npm)
-- README: `/home/lyle/dev/claude-flow/v3/@claude-flow/cli/src/ruvector/README.md`
+- Package: `ruvector` (npm) — now bundled in Ruflo v3.5
 - ADR: ADR-017 (RuVector Integration)
 - GitHub: https://github.com/ruvnet/ruvector
 - npm: https://www.npmjs.com/package/ruvector
