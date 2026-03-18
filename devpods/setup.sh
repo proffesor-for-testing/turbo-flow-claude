@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # =============================================================================
 # TurboFlow 4.0 Setup Script (FIXED)
 # Replaces: .devcontainer/setup.sh from v3.4.1
