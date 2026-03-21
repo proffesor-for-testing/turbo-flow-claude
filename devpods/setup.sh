@@ -15,11 +15,6 @@
 #   FIX 8: bd init / gitnexus analyze in subshells with || true
 #   FIX 9: sed -i compatibility (GNU vs BSD) handled
 #   FIX 10: MCP registration section fully guarded
-#   FIX 11: npm global prefix for non-root users (vscode in devcontainers)
-#   FIX 12: Persistent PATH in shell rc files so Claude Code is found after setup
-#   FIX 13: Node.js fallback no longer conflicts with nvm-managed Node from
-#           devcontainer features
-#   FIX 14: Claude Code install fails loudly instead of silently swallowing errors
 #
 # What changed from v3.4.1:
 #   REMOVED: claude-flow@alpha (dead package → now ruflo)
@@ -86,34 +81,6 @@ echo "╚═══════════════════════�
 echo -e "${NC}"
 
 # =============================================================================
-# FIX 11: npm global prefix for non-root users (e.g. vscode in devcontainers)
-# The devcontainer node feature installs Node via nvm, but npm install -g tries
-# to write to /usr/local/lib/node_modules which vscode can't write to. This
-# redirects global installs to a user-owned directory.
-# =============================================================================
-if [ "$(id -u)" -ne 0 ]; then
-    export NPM_CONFIG_PREFIX="$HOME/.npm-global"
-    mkdir -p "$NPM_CONFIG_PREFIX/bin"
-    export PATH="$NPM_CONFIG_PREFIX/bin:$HOME/.local/bin:$HOME/.claude/bin:$PATH"
-    ok "npm global prefix set to $NPM_CONFIG_PREFIX (non-root user: $(whoami))"
-fi
-
-# FIX 12: Persist PATH so Claude Code and other globals are found after setup
-for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    if [ -f "$rc" ]; then
-        if ! grep -q 'npm-global' "$rc" 2>/dev/null; then
-            cat >> "$rc" << 'PATHEOF'
-
-# TurboFlow 4.0 — npm global prefix for non-root user
-export NPM_CONFIG_PREFIX="$HOME/.npm-global"
-export PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.claude/bin:$PATH"
-PATHEOF
-            ok "PATH persisted in $(basename "$rc")"
-        fi
-    fi
-done
-
-# =============================================================================
 # STEP 1: System Prerequisites
 # =============================================================================
 step 1 "System Prerequisites"
@@ -128,25 +95,15 @@ else
     warn "Unknown package manager — ensure build-essential, python3, git, curl, jq are available"
 fi
 
-# FIX 13: Node.js 20+ check — don't conflict with nvm-managed Node from
-# devcontainer features. The devcontainer node feature already provides Node,
-# so we only need to check version, not install from nodesource (which would
-# conflict with nvm and require sudo for a system-level install).
+# Node.js 20+ (required by ruflo v3.5)
 if ! command -v node &>/dev/null || [ "$(node -v | cut -d'.' -f1 | tr -d 'v')" -lt 20 ]; then
     if command -v nvm &>/dev/null; then
         nvm install 20 && nvm use 20
-        ok "Node.js $(node -v) installed via nvm"
     else
-        # Only use nodesource as last resort — this is for bare metal, not devcontainers
-        warn "Node 20+ required but nvm not available — attempting nodesource fallback"
-        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - >> "$LOG" 2>&1 || true
-        sudo apt-get install -y -qq nodejs >> "$LOG" 2>&1 || true
-        if command -v node &>/dev/null && [ "$(node -v | cut -d'.' -f1 | tr -d 'v')" -ge 20 ]; then
-            ok "Node.js $(node -v) installed via nodesource"
-        else
-            fail "Node.js 20+ required — install manually"
-        fi
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - >> "$LOG" 2>&1
+        sudo apt-get install -y -qq nodejs >> "$LOG" 2>&1
     fi
+    ok "Node.js $(node -v) installed"
 else
     ok "Node.js $(node -v) already present"
 fi
@@ -163,34 +120,23 @@ ok "Elapsed: $(elapsed)"
 # =============================================================================
 step 2 "Claude Code + Ruflo v3.5"
 
-# FIX 14: Claude Code install — fail loudly, don't swallow errors
+# Claude Code
 if ! command -v claude &>/dev/null; then
-    echo "  Installing Claude Code via npm (prefix: ${NPM_CONFIG_PREFIX:-system})..." 
     npm install -g @anthropic-ai/claude-code >> "$LOG" 2>&1 || true
-
     if command -v claude &>/dev/null; then
-        ok "Claude Code installed ($(which claude))"
+        ok "Claude Code installed"
     else
         # Fallback to official installer
-        echo "  npm install failed, trying official installer..." 
-        curl -fsSL https://claude.ai/install.sh 2>/dev/null | sh >> "$LOG" 2>&1 || true
-
-        # Re-check PATH after official installer
-        export PATH="$HOME/.local/bin:$HOME/.claude/bin:$NPM_CONFIG_PREFIX/bin:$PATH"
-
+        curl -fsSL https://claude.ai/install.sh 2>/dev/null | sh 2>&1 || true
+        export PATH="$HOME/.local/bin:$HOME/.claude/bin:$PATH"
         if command -v claude &>/dev/null; then
-            ok "Claude Code installed via official installer ($(which claude))"
+            ok "Claude Code installed via official installer"
         else
-            fail "Claude Code install failed"
-            echo -e "    ${RED}Debug:${NC} NPM_CONFIG_PREFIX=${NPM_CONFIG_PREFIX:-unset}"
-            echo -e "    ${RED}Debug:${NC} PATH=$PATH"
-            echo -e "    ${RED}Debug:${NC} Check $LOG for npm errors"
-            echo -e "    ${RED}Fix:${NC}   Run manually: npm install -g @anthropic-ai/claude-code"
-            echo -e "    ${RED}Fix:${NC}   Or: curl -fsSL https://claude.ai/install.sh | sh"
+            fail "Claude Code install failed — install manually: npm i -g @anthropic-ai/claude-code"
         fi
     fi
 else
-    ok "Claude Code $(claude --version 2>/dev/null | head -1 || echo 'present') ($(which claude))"
+    ok "Claude Code $(claude --version 2>/dev/null | head -1 || echo 'present')"
 fi
 
 # ── FIX 1: Ruflo init — handle "already initialized" without crashing ──
@@ -930,10 +876,6 @@ echo "[\$(date)] Bootstrap starting" >> "\$BSLOG"
 
 # Cap all Node operations to 512MB
 export NODE_OPTIONS="--max-old-space-size=512"
-
-# Ensure npm prefix is set for non-root user
-export NPM_CONFIG_PREFIX="\$HOME/.npm-global"
-export PATH="\$NPM_CONFIG_PREFIX/bin:\$HOME/.local/bin:\$HOME/.claude/bin:\$PATH"
 
 # --- 1. Retry GitNexus install if missing ---
 if ! command -v gitnexus &>/dev/null; then
