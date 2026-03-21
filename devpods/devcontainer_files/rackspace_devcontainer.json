@@ -1,6 +1,3 @@
-Two changes — added `$HOME/.npm-global/lib` to the mkdir, and removed `NODE_OPTIONS` from containerEnv (that was causing the `illegal value for flag --max-old-space-size` errors earlier, it snuck back in):
-
-```json
 {
     "name": "Claude Dev Workspace",
     "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
