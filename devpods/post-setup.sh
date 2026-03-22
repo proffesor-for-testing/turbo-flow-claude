@@ -151,7 +151,7 @@ if $MCP_OK; then
     success "Ruflo MCP server registered"
     ((PASS++))
 else
-    warning "Ruflo MCP not found in config — run: claude mcp add ruflo -- npx -y ruflo@latest"
+    warning "Ruflo MCP not found in config — resolves automatically on first 'claude' launch"
     ((ISSUES++))
 fi
 
@@ -297,7 +297,7 @@ if $GNX_MCP; then
     success "GitNexus MCP server registered"
     ((PASS++))
 else
-    warning "GitNexus MCP not registered — run: npx gitnexus setup"
+    warning "GitNexus MCP not registered — resolves automatically on first 'claude' launch"
     ((ISSUES++))
 fi
 
@@ -495,7 +495,7 @@ fi
 # =============================================================================
 section "Step 12: Environment"
 
-[ -n "${ANTHROPIC_API_KEY:-}" ] && { success "ANTHROPIC_API_KEY is set"; ((PASS++)); } || { warning "ANTHROPIC_API_KEY not set"; ((ISSUES++)); }
+[ -n "${ANTHROPIC_API_KEY:-}" ] && { success "ANTHROPIC_API_KEY is set"; ((PASS++)); } || { info "ANTHROPIC_API_KEY not set — set via: export ANTHROPIC_API_KEY=\"sk-ant-...\" (or authenticate via 'claude' on first launch)"; }
 echo "$PATH" | grep -q ".local/bin" && { success "PATH includes ~/.local/bin"; ((PASS++)); } || { warning "PATH missing ~/.local/bin"; ((ISSUES++)); }
 echo "$PATH" | grep -q ".claude/bin" && { success "PATH includes ~/.claude/bin"; ((PASS++)); } || { warning "PATH missing ~/.claude/bin"; ((ISSUES++)); }
 echo "$PATH" | grep -q ".npm-global/bin" && { success "PATH includes ~/.npm-global/bin"; ((PASS++)); } || { warning "PATH missing ~/.npm-global/bin"; ((ISSUES++)); }
