@@ -11,19 +11,31 @@
 #   - Native Agent Teams
 #   - Statusline Pro
 #   - CLAUDE.md + workspace + aliases
+#
+# FIX: PATH setup now checks NPM_CONFIG_PREFIX (uppercase, set by containerEnv)
+#      in addition to npm_config_prefix (lowercase, set by npm).
+# FIX: Plugin check searches multiple possible install locations.
+# FIX: MCP config check includes ~/.claude/settings.local.json and project .mcp.json.
+# FIX: Beads/GitNexus detection checks ~/.npm-global/bin explicitly.
 # =============================================================================
 
 # Get the directory where this script is located
 readonly DEVPOD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# PATH setup
-if [ -n "$npm_config_prefix" ]; then
+# PATH setup — check both uppercase (containerEnv) and lowercase (npm native) prefix
+if [ -n "$NPM_CONFIG_PREFIX" ]; then
+    export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
+elif [ -n "$npm_config_prefix" ]; then
     export PATH="$npm_config_prefix/bin:$PATH"
 elif [ -f "$HOME/.npmrc" ]; then
     _NPM_PREFIX=$(grep '^prefix=' "$HOME/.npmrc" 2>/dev/null | cut -d= -f2)
     [ -n "$_NPM_PREFIX" ] && export PATH="$_NPM_PREFIX/bin:$PATH"
 fi
-export PATH="$HOME/.local/bin:$HOME/.claude/bin:$PATH"
+# Always include these
+export PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$HOME/.claude/bin:$PATH"
+
+# Source aliases so Agent Teams env var and other exports are available
+[ -f "$HOME/.turboflow_aliases" ] && source "$HOME/.turboflow_aliases"
 
 # Colors
 readonly GREEN='\033[0;32m'
@@ -42,14 +54,6 @@ section() { echo -e "\n${CYAN}━━━ $* ━━━${NC}"; }
 WORKSPACE="${WORKSPACE_FOLDER:=$(pwd)}"
 ISSUES=0
 PASS=0
-
-track() {
-    if "$@"; then
-        ((PASS++))
-    else
-        ((ISSUES++))
-    fi
-}
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
@@ -104,7 +108,7 @@ if command -v claude >/dev/null 2>&1; then
     success "Claude Code $(claude --version 2>/dev/null | head -1)"
     ((PASS++))
 else
-    fail "Claude Code not found — run devpods/setup.sh first"
+    fail "Claude Code not found — run: curl -fsSL https://claude.ai/install.sh | bash"
     ((ISSUES++))
 fi
 
@@ -123,14 +127,25 @@ fi
 # =============================================================================
 section "Step 2: Ruflo MCP + Health Check"
 
-# MCP registration
+# MCP registration — check all known config locations
 MCP_OK=false
-for cfg in "$HOME/.config/claude/mcp.json" "$HOME/.claude/claude_desktop_config.json"; do
+for cfg in "$HOME/.config/claude/mcp.json" \
+           "$HOME/.claude/claude_desktop_config.json" \
+           "$HOME/.claude/settings.local.json" \
+           "$WORKSPACE/.mcp.json" \
+           "$WORKSPACE/.claude/mcp.json"; do
     if [ -f "$cfg" ] && grep -q "ruflo" "$cfg" 2>/dev/null; then
         MCP_OK=true
         break
     fi
 done
+
+# Also check via claude mcp list if available
+if ! $MCP_OK && command -v claude >/dev/null 2>&1; then
+    if claude mcp list 2>/dev/null | grep -q "ruflo" 2>/dev/null; then
+        MCP_OK=true
+    fi
+fi
 
 if $MCP_OK; then
     success "Ruflo MCP server registered"
@@ -164,12 +179,35 @@ fi
 # =============================================================================
 section "Step 3: Ruflo Plugins (6)"
 
-PLUGIN_DIR="$WORKSPACE/.claude-flow/plugins"
+# Plugins can be installed in multiple locations depending on ruflo version
+PLUGIN_DIRS=(
+    "$WORKSPACE/.claude-flow/plugins"
+    "$WORKSPACE/.ruflo/plugins"
+    "$WORKSPACE/node_modules/@claude-flow"
+    "$HOME/.claude-flow/plugins"
+    "$HOME/.ruflo/plugins"
+)
 
 check_plugin() {
     local name="$1"
     local display="$2"
-    if [ -d "$PLUGIN_DIR/$name" ] && [ -f "$PLUGIN_DIR/$name/package.json" ]; then
+    local found=false
+
+    for pdir in "${PLUGIN_DIRS[@]}"; do
+        if [ -d "$pdir/$name" ] && [ -f "$pdir/$name/package.json" ]; then
+            found=true
+            break
+        fi
+    done
+
+    # Also check via ruflo plugins list
+    if ! $found; then
+        if npx ruflo@latest plugins list 2>/dev/null | grep -qi "$(echo "$name" | sed 's/@claude-flow\///')" 2>/dev/null; then
+            found=true
+        fi
+    fi
+
+    if $found; then
         success "$display"
         ((PASS++))
     else
@@ -221,7 +259,7 @@ else
 fi
 
 # =============================================================================
-# STEP 5: GitNexus
+# STEP 6: GitNexus
 # =============================================================================
 section "Step 6: GitNexus (Codebase Knowledge Graph)"
 
@@ -236,14 +274,24 @@ else
     ((ISSUES++))
 fi
 
-# GitNexus MCP
+# GitNexus MCP — check all known config locations
 GNX_MCP=false
-for cfg in "$HOME/.config/claude/mcp.json" "$HOME/.claude/claude_desktop_config.json"; do
+for cfg in "$HOME/.config/claude/mcp.json" \
+           "$HOME/.claude/claude_desktop_config.json" \
+           "$HOME/.claude/settings.local.json" \
+           "$WORKSPACE/.mcp.json" \
+           "$WORKSPACE/.claude/mcp.json"; do
     if [ -f "$cfg" ] && grep -q "gitnexus" "$cfg" 2>/dev/null; then
         GNX_MCP=true
         break
     fi
 done
+
+if ! $GNX_MCP && command -v claude >/dev/null 2>&1; then
+    if claude mcp list 2>/dev/null | grep -q "gitnexus" 2>/dev/null; then
+        GNX_MCP=true
+    fi
+fi
 
 if $GNX_MCP; then
     success "GitNexus MCP server registered"
@@ -264,7 +312,7 @@ if [ -d "$WORKSPACE/.git" ]; then
 fi
 
 # =============================================================================
-# STEP 6: Beads (Cross-Session Memory)
+# STEP 7: Beads (Cross-Session Memory)
 # =============================================================================
 section "Step 7: Beads (Cross-Session Memory)"
 
@@ -272,8 +320,14 @@ if command -v bd >/dev/null 2>&1; then
     success "Beads CLI installed"
     ((PASS++))
 else
-    warning "Beads not installed — run: npm i -g @beads/bd"
-    ((ISSUES++))
+    # Check if it's in npm-global but not on PATH yet
+    if [ -x "$HOME/.npm-global/bin/bd" ]; then
+        success "Beads CLI installed (in ~/.npm-global/bin)"
+        ((PASS++))
+    else
+        warning "Beads not installed — run: npm i -g @beads/bd"
+        ((ISSUES++))
+    fi
 fi
 
 if [ -d "$WORKSPACE/.beads" ] || [ -f "$WORKSPACE/.beads.json" ]; then
@@ -288,7 +342,7 @@ else
 fi
 
 # =============================================================================
-# STEP 7: Agent Teams + Environment
+# STEP 8: Agent Teams + Environment
 # =============================================================================
 section "Step 8: Agent Teams + Environment"
 
@@ -296,8 +350,14 @@ if [ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}" = "1" ]; then
     success "Agent Teams enabled (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)"
     ((PASS++))
 else
-    warning "Agent Teams not enabled — add to shell: export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
-    ((ISSUES++))
+    # Check if it's in the alias file even if not exported in this shell
+    if grep -q 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1' "$HOME/.turboflow_aliases" 2>/dev/null; then
+        success "Agent Teams configured in aliases (active after: source ~/.bashrc)"
+        ((PASS++))
+    else
+        warning "Agent Teams not enabled — add to shell: export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
+        ((ISSUES++))
+    fi
 fi
 
 # Check alias file
@@ -354,7 +414,7 @@ for func in turbo-status turbo-help wt-add rf-spawn; do
 done
 
 # =============================================================================
-# STEP 8: Statusline Pro
+# STEP 9: Statusline Pro
 # =============================================================================
 section "Step 9: Statusline Pro"
 
@@ -386,7 +446,7 @@ else
 fi
 
 # =============================================================================
-# STEP 9: CLAUDE.md + Workspace
+# STEP 10: CLAUDE.md + Workspace
 # =============================================================================
 section "Step 10: CLAUDE.md + Workspace"
 
@@ -418,7 +478,7 @@ for dir in src tests docs scripts config plans; do
 done
 
 # =============================================================================
-# STEP 10: Ruflo Daemon
+# STEP 11: Ruflo Daemon
 # =============================================================================
 section "Step 11: Ruflo Daemon"
 
@@ -431,22 +491,24 @@ else
 fi
 
 # =============================================================================
-# STEP 11: API Keys + PATH
+# STEP 12: API Keys + PATH
 # =============================================================================
 section "Step 12: Environment"
 
-[ -n "${ANTHROPIC_API_KEY:-}" ] && success "ANTHROPIC_API_KEY is set" || warning "ANTHROPIC_API_KEY not set"
-echo "$PATH" | grep -q "$HOME/.local/bin" && success "PATH includes ~/.local/bin" || warning "PATH missing ~/.local/bin"
-echo "$PATH" | grep -q "$HOME/.claude/bin" && success "PATH includes ~/.claude/bin" || warning "PATH missing ~/.claude/bin"
+[ -n "${ANTHROPIC_API_KEY:-}" ] && { success "ANTHROPIC_API_KEY is set"; ((PASS++)); } || { warning "ANTHROPIC_API_KEY not set"; ((ISSUES++)); }
+echo "$PATH" | grep -q ".local/bin" && { success "PATH includes ~/.local/bin"; ((PASS++)); } || { warning "PATH missing ~/.local/bin"; ((ISSUES++)); }
+echo "$PATH" | grep -q ".claude/bin" && { success "PATH includes ~/.claude/bin"; ((PASS++)); } || { warning "PATH missing ~/.claude/bin"; ((ISSUES++)); }
+echo "$PATH" | grep -q ".npm-global/bin" && { success "PATH includes ~/.npm-global/bin"; ((PASS++)); } || { warning "PATH missing ~/.npm-global/bin"; ((ISSUES++)); }
 
 # =============================================================================
-# STEP 12: Fix Permissions
+# STEP 13: Fix Permissions
 # =============================================================================
 section "Step 13: Permissions"
 
 CURRENT_USER=$(whoami)
 sudo chown -R "$CURRENT_USER:$CURRENT_USER" "$HOME/.claude" 2>/dev/null || true
 sudo chown -R "$CURRENT_USER:$CURRENT_USER" "$HOME/.local" 2>/dev/null || true
+sudo chown -R "$CURRENT_USER:$CURRENT_USER" "$HOME/.npm-global" 2>/dev/null || true
 sudo chown -R "$CURRENT_USER:$CURRENT_USER" "$HOME/.config/claude" 2>/dev/null || true
 sudo chown -R "$CURRENT_USER:$CURRENT_USER" /home/"$CURRENT_USER"/.vscode-server 2>/dev/null || true
 sudo chown -R "$CURRENT_USER:$CURRENT_USER" /workspaces/.cache/vscode-server 2>/dev/null || true
