@@ -15,6 +15,7 @@
 #   FIX 8: bd init / gitnexus analyze in subshells with || true
 #   FIX 9: sed -i compatibility (GNU vs BSD) handled
 #   FIX 10: MCP registration section fully guarded
+#   FIX 11: Dolt install added before Beads (required storage backend)
 #
 # What changed from v3.4.1:
 #   REMOVED: claude-flow@alpha (dead package → now ruflo)
@@ -34,6 +35,7 @@
 #   KEPT:    6 Ruflo plugins (agentic-qe, code-intelligence, test-intelligence,
 #            perf-optimizer, teammate-plugin, gastown-bridge)
 #   KEPT:    OpenSpec (spec-driven development)
+#   ADDED:   Dolt (version-controlled SQL database — required by Beads)
 #   ADDED:   Beads (cross-session project memory)
 #   ADDED:   Git worktree helpers (agent isolation with PG Vector schema namespacing)
 #   ADDED:   Native Agent Teams env var
@@ -328,11 +330,105 @@ ok "GitNexus indexing scheduled for post-setup bootstrap"
 ok "Elapsed: $(elapsed)"
 
 # =============================================================================
-# STEP 6: Beads — Cross-Session Project Memory (NEW in 4.0)
-# Agents remember across sessions via git-native JSONL.
-# FIX: Same OOM protection as GitNexus — subshell + capped heap.
+# STEP 6: Dolt + Beads — Version-Controlled Memory
+#
+# Dolt is the storage backend required by Beads. It is a Git-like SQL database
+# (~100MB binary) that handles all versioning, branching, and merge of issue
+# data. Beads (bd) will fail to init without Dolt present.
+#
+# Install order: Dolt FIRST, then Beads.
+#
+# Dolt install strategy (in priority order):
+#   1. brew install dolt          — macOS with Homebrew (fastest, no sudo needed)
+#   2. Official installer script  — Linux with sudo (puts binary in /usr/local/bin)
+#   3. No-sudo binary download    — Linux containers without sudo (DevPod, Codespaces)
+#      Downloads the release binary directly into $HOME/.local/bin
+#   4. Deferred to bootstrap      — if all above fail (OOM, network issue)
+#
+# After install, configure Dolt git identity so Beads can attribute commits.
+# This mirrors git config and needs no user input.
+#
+# Beads install strategy:
+#   1. npm install -g @beads/bd   — primary (in capped subshell, OOM-safe)
+#   2. pip install --user beads   — lighter fallback
+#   3. Deferred to bootstrap      — if both fail
 # =============================================================================
-step 6 "Beads (Cross-Session Memory)"
+step 6 "Dolt + Beads (Version-Controlled Memory)"
+
+npm cache clean --force >> "$LOG" 2>&1 || true
+
+# ── 6a. Dolt ─────────────────────────────────────────────────────────────────
+
+install_dolt_no_sudo() {
+    # Download the release binary directly — no sudo, no npm
+    local DOLT_BIN_DIR="$HOME/.local/bin"
+    mkdir -p "$DOLT_BIN_DIR"
+
+    local OS ARCH DOLT_URL
+    OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    ARCH="$(uname -m)"
+    case "$ARCH" in
+        x86_64)  ARCH="amd64" ;;
+        aarch64|arm64) ARCH="arm64" ;;
+        *)        ARCH="amd64" ;;  # fallback
+    esac
+
+    # Build download URL for latest release tarball
+    DOLT_URL="https://github.com/dolthub/dolt/releases/latest/download/dolt-${OS}-${ARCH}.tar.gz"
+
+    echo "    Downloading Dolt binary from $DOLT_URL" >> "$LOG"
+    if curl -fsSL "$DOLT_URL" | tar -xz -C "$DOLT_BIN_DIR" --strip-components=2 2>> "$LOG"; then
+        # Tarball layout: dolt-linux-amd64/bin/dolt → strip 2 levels
+        chmod +x "$DOLT_BIN_DIR/dolt" 2>/dev/null || true
+        export PATH="$DOLT_BIN_DIR:$PATH"
+        return 0
+    fi
+    return 1
+}
+
+if command -v dolt &>/dev/null; then
+    ok "Dolt $(dolt version 2>/dev/null | head -1 | awk '{print $NF}') already present"
+else
+    DOLT_OK=0
+
+    # Method 1: Homebrew (macOS)
+    if command -v brew &>/dev/null; then
+        brew install dolt >> "$LOG" 2>&1 && DOLT_OK=1 || true
+        [ "$DOLT_OK" -eq 1 ] && ok "Dolt installed via Homebrew"
+    fi
+
+    # Method 2: Official installer script (Linux, requires sudo)
+    if [ "$DOLT_OK" -eq 0 ] && command -v sudo &>/dev/null; then
+        (sudo bash -c 'curl -fsSL https://github.com/dolthub/dolt/releases/latest/download/install.sh | bash' >> "$LOG" 2>&1) \
+            && DOLT_OK=1 || true
+        [ "$DOLT_OK" -eq 1 ] && ok "Dolt installed via official installer"
+    fi
+
+    # Method 3: No-sudo binary download (DevPod containers, Codespaces, rootless)
+    if [ "$DOLT_OK" -eq 0 ]; then
+        install_dolt_no_sudo && command -v dolt &>/dev/null && DOLT_OK=1 || true
+        [ "$DOLT_OK" -eq 1 ] && ok "Dolt installed via binary download (no sudo)"
+    fi
+
+    # Method 4: Defer to bootstrap
+    if [ "$DOLT_OK" -eq 0 ]; then
+        warn "Dolt install deferred to post-setup bootstrap"
+        NEEDS_BOOTSTRAP=1
+    fi
+fi
+
+# Configure Dolt git identity (mirrors git config; Beads needs this to commit)
+if command -v dolt &>/dev/null; then
+    GIT_NAME="$(git config --global user.name 2>/dev/null || echo 'TurboFlow Agent')"
+    GIT_EMAIL="$(git config --global user.email 2>/dev/null || echo 'agent@turboflow.local')"
+    dolt config --global --add user.name  "$GIT_NAME"  >> "$LOG" 2>&1 || true
+    dolt config --global --add user.email "$GIT_EMAIL" >> "$LOG" 2>&1 || true
+    ok "Dolt git identity configured ($GIT_NAME <$GIT_EMAIL>)"
+fi
+
+# ── 6b. Beads ────────────────────────────────────────────────────────────────
+# Beads requires Dolt to be present before bd init can succeed.
+# The actual bd init is deferred to bootstrap (needs memory freed first).
 
 if ! command -v bd &>/dev/null; then
     BD_OK=0
@@ -353,10 +449,10 @@ if ! command -v bd &>/dev/null; then
         fi
     fi
 else
-    ok "Beads already present"
+    ok "Beads $(bd --version 2>/dev/null | head -1 || echo 'present') already installed"
 fi
 
-# Beads init deferred to bootstrap (needs all memory freed first)
+# bd init deferred to bootstrap (needs all memory freed and Dolt confirmed running)
 ok "Beads workspace init scheduled for post-setup bootstrap"
 
 ok "Elapsed: $(elapsed)"
@@ -549,13 +645,15 @@ Isolation: Git worktrees per parallel agent.
 3. AgentDB context loads automatically via Ruflo
 
 ### During Work — Decision Tree
-- **Project roadmap / blockers / dependencies / decisions** → `bd add` (Beads)
+- **Project roadmap / blockers / dependencies / decisions** → Beads (`bd create`)
 - **Current session tasks / active checklist** → Native Tasks
 - **Learned patterns / routing weights / skills** → AgentDB (automatic)
 
 ### Session End
-- File any discovered work as Beads issues: `bd add --type issue "description"`
-- Summarize architectural decisions in Beads: `bd add --type decision "description"`
+- File any discovered work as Beads issues:
+    bd create "short title" -t bug -p 1 --description "what it is, where it lives"
+- Summarize architectural decisions:
+    bd create "short title" -t decision -p 0 --description "context and reasoning"
 - AgentDB persists automatically
 
 ## Isolation Rules
@@ -660,11 +758,30 @@ alias mem-store='npx ruflo@latest memory store'
 alias mem-stats='npx ruflo@latest memory stats'
 
 # --- Beads (cross-session memory) ---
-alias bd='bd'
+# Beads auto-commits every write to local Dolt history — no push needed for solo use.
+# For team sharing via a Dolt remote: bd dolt remote add origin <url> && bd dolt push
 alias bd-ready='bd ready'
-alias bd-add='bd add'
 alias bd-list='bd list'
 alias bd-status='bd status'
+bd-add() {
+    # Usage: bd-add "title" bug|decision|task [priority 0-3] ["description"]
+    local title="${1:?Usage: bd-add 'title' type [priority] ['description']}"
+    local type="${2:-task}"
+    local priority="${3:-1}"
+    local description="${4:-}"
+    if [ -n "$description" ]; then
+        bd create "$title" -t "$type" -p "$priority" --description "$description"
+    else
+        bd create "$title" -t "$type" -p "$priority"
+    fi
+}
+
+# --- Dolt (Beads storage backend) ---
+alias dolt-status='dolt status 2>/dev/null || echo "Not in a Dolt repo"'
+alias dolt-log='dolt log 2>/dev/null || echo "Not in a Dolt repo"'
+# For team sharing only — not needed for solo use:
+alias bd-push='bd dolt push'
+alias bd-pull='bd dolt pull'
 
 # --- Git Worktrees (agent isolation) ---
 wt-add() {
@@ -730,7 +847,15 @@ turbo-status() {
     npx ruflo@latest --version 2>/dev/null && echo "  ✓ Ruflo" || echo "  ✗ Ruflo"
     echo ""
     echo "Memory:"
-    bd --version 2>/dev/null && echo "  ✓ Beads" || echo "  ✗ Beads (install: npm i -g @beads/bd)"
+    command -v dolt &>/dev/null \
+        && echo "  ✓ Dolt $(dolt version 2>/dev/null | awk 'NR==1{print $NF}')" \
+        || echo "  ✗ Dolt (required by Beads — install: curl -fsSL https://github.com/dolthub/dolt/releases/latest/download/install.sh | sudo bash)"
+    command -v bd &>/dev/null \
+        && echo "  ✓ Beads $(bd --version 2>/dev/null | head -1)" \
+        || echo "  ✗ Beads (install: npm i -g @beads/bd)"
+    [ -d ".beads" ] \
+        && echo "  ✓ Beads initialized in this project" \
+        || echo "  ○ Beads not initialized here (run: bd init)"
     echo "  Agent Teams: ${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-off}"
     echo ""
     echo "Plugins:"
@@ -741,7 +866,6 @@ turbo-status() {
     echo ""
     echo "Workspace:"
     [ -f "CLAUDE.md" ] && echo "  ✓ CLAUDE.md" || echo "  ✗ CLAUDE.md (run setup again)"
-    [ -d ".beads" ] && echo "  ✓ Beads initialized" || echo "  ○ Beads not initialized (run: bd init)"
     git worktree list 2>/dev/null | head -5
     echo ""
     echo "Agents: $(ls -1 agents/*.md 2>/dev/null | wc -l || echo '0') subagent files"
@@ -761,10 +885,14 @@ turbo-help() {
     echo ""
     echo "Memory:"
     echo "  bd-ready           Check project state (session start)"
-    echo "  bd-add             Record issue/decision/blocker"
+    echo "  bd-add 'title' decision 0 'reasoning'   Record a decision"
+    echo "  bd-add 'title' bug 1 'what and where'   Record a bug"
     echo "  ruv-remember K V   Store in AgentDB"
     echo "  ruv-recall Q       Query AgentDB"
     echo "  mem-search Q       Search ruflo memory"
+    echo ""
+    echo "  Note: Beads auto-saves locally — no push needed for solo use."
+    echo "  For team sharing: bd dolt remote add origin <url> && bd-push"
     echo ""
     echo "Isolation:"
     echo "  wt-add agent-1     Create worktree for agent"
@@ -830,16 +958,12 @@ ok "Elapsed: $(elapsed)"
 # POST-SETUP BOOTSTRAP — runs in background after setup exits
 #
 # This handles everything too heavy to run during setup (OOM risk):
-#   1. Retry any failed installs (GitNexus, Beads) now that npm caches are freed
+#   1. Retry any failed installs (Dolt, GitNexus, Beads) now that npm caches
+#      are freed
 #   2. Run gitnexus analyze on the workspace
-#   3. Run bd init in the workspace
+#   3. Run bd init in the workspace (requires Dolt to be present)
 #   4. Register GitNexus MCP if install was deferred
 #   5. Self-deletes the one-shot shell hook after completion
-#
-# Two triggers ensure it runs automatically:
-#   A. Immediately: nohup background process launched at end of setup
-#   B. Shell login fallback: one-shot hook in .bashrc/.zshrc (in case A is
-#      killed when the DevPod container restarts after setup)
 # =============================================================================
 
 BOOTSTRAP_SCRIPT="$HOME/.turboflow-bootstrap.sh"
@@ -850,7 +974,6 @@ BOOTSTRAP_DONE="$HOME/.turboflow-bootstrap-done"
 cat > "$BOOTSTRAP_SCRIPT" << BOOTSTRAPEOF
 #!/bin/bash
 # TurboFlow 4.0 — Post-Setup Bootstrap (auto-runs once, then self-removes)
-# This script completes deferred work that was too memory-heavy for setup.
 
 set -uo pipefail
 
@@ -859,14 +982,12 @@ LOCK="$BOOTSTRAP_LOCK"
 DONE_FLAG="$BOOTSTRAP_DONE"
 WORKSPACE="$WORKSPACE"
 
-# Already completed
 [ -f "\$DONE_FLAG" ] && exit 0
 
-# Prevent concurrent runs
 if [ -f "\$LOCK" ]; then
     LOCK_PID=\$(cat "\$LOCK" 2>/dev/null)
     if [ -n "\$LOCK_PID" ] && kill -0 "\$LOCK_PID" 2>/dev/null; then
-        exit 0  # Another instance is running
+        exit 0
     fi
 fi
 echo \$\$ > "\$LOCK"
@@ -874,16 +995,45 @@ trap 'rm -f "\$LOCK"' EXIT
 
 echo "[\$(date)] Bootstrap starting" >> "\$BSLOG"
 
-# Cap all Node operations to 512MB
 export NODE_OPTIONS="--max-old-space-size=512"
 
-# --- 1. Retry GitNexus install if missing ---
+# --- 1. Retry Dolt install if missing ---
+if ! command -v dolt &>/dev/null; then
+    echo "[\$(date)] Installing Dolt..." >> "\$BSLOG"
+    # Try official installer first (may have sudo in CI/CD environments)
+    if command -v sudo &>/dev/null; then
+        sudo bash -c 'curl -fsSL https://github.com/dolthub/dolt/releases/latest/download/install.sh | bash' >> "\$BSLOG" 2>&1 || true
+    fi
+    # No-sudo binary fallback
+    if ! command -v dolt &>/dev/null; then
+        DOLT_BIN_DIR="\$HOME/.local/bin"
+        mkdir -p "\$DOLT_BIN_DIR"
+        OS="\$(uname -s | tr '[:upper:]' '[:lower:]')"
+        ARCH="\$(uname -m)"
+        [ "\$ARCH" = "aarch64" ] && ARCH="arm64"
+        [ "\$ARCH" = "x86_64" ]  && ARCH="amd64"
+        curl -fsSL "https://github.com/dolthub/dolt/releases/latest/download/dolt-\${OS}-\${ARCH}.tar.gz" \
+            | tar -xz -C "\$DOLT_BIN_DIR" --strip-components=2 >> "\$BSLOG" 2>&1 || true
+        export PATH="\$DOLT_BIN_DIR:\$PATH"
+    fi
+fi
+
+# Configure Dolt identity if now available
+if command -v dolt &>/dev/null; then
+    GIT_NAME="\$(git config --global user.name 2>/dev/null || echo 'TurboFlow Agent')"
+    GIT_EMAIL="\$(git config --global user.email 2>/dev/null || echo 'agent@turboflow.local')"
+    dolt config --global --add user.name  "\$GIT_NAME"  >> "\$BSLOG" 2>&1 || true
+    dolt config --global --add user.email "\$GIT_EMAIL" >> "\$BSLOG" 2>&1 || true
+    echo "[\$(date)] Dolt identity configured" >> "\$BSLOG"
+fi
+
+# --- 2. Retry GitNexus install if missing ---
 if ! command -v gitnexus &>/dev/null; then
     echo "[\$(date)] Installing GitNexus..." >> "\$BSLOG"
     npm install -g gitnexus >> "\$BSLOG" 2>&1 || true
 fi
 
-# --- 2. Retry Beads install if missing ---
+# --- 3. Retry Beads install if missing (requires Dolt) ---
 if ! command -v bd &>/dev/null; then
     echo "[\$(date)] Installing Beads..." >> "\$BSLOG"
     npm install -g @beads/bd >> "\$BSLOG" 2>&1 || true
@@ -892,38 +1042,34 @@ if ! command -v bd &>/dev/null; then
     pip install --user beads >> "\$BSLOG" 2>&1 || true
 fi
 
-# --- 3. Initialize Beads in workspace ---
-if command -v bd &>/dev/null && [ -d "\$WORKSPACE/.git" ]; then
+# --- 4. Initialize Beads in workspace (requires both Dolt and bd) ---
+if command -v dolt &>/dev/null && command -v bd &>/dev/null && [ -d "\$WORKSPACE/.git" ]; then
     if [ ! -d "\$WORKSPACE/.beads" ]; then
         echo "[\$(date)] Initializing Beads in workspace..." >> "\$BSLOG"
         (cd "\$WORKSPACE" && bd init >> "\$BSLOG" 2>&1) || true
     fi
 fi
 
-# --- 4. Index workspace with GitNexus ---
+# --- 5. Index workspace with GitNexus ---
 if [ -d "\$WORKSPACE/.git" ]; then
     if command -v gitnexus &>/dev/null; then
         echo "[\$(date)] Indexing workspace with GitNexus..." >> "\$BSLOG"
         (cd "\$WORKSPACE" && gitnexus analyze >> "\$BSLOG" 2>&1) || true
     else
-        # Fallback to npx with tight memory
-        echo "[\$(date)] Indexing workspace with GitNexus (npx)..." >> "\$BSLOG"
         (cd "\$WORKSPACE" && npx -y gitnexus analyze >> "\$BSLOG" 2>&1) || true
     fi
 fi
 
-# --- 5. Register GitNexus MCP if not already done ---
+# --- 6. Register GitNexus MCP if not already done ---
 if command -v gitnexus &>/dev/null || npx gitnexus --version >> "\$BSLOG" 2>&1; then
     npx gitnexus setup >> "\$BSLOG" 2>&1 \
         || claude mcp add gitnexus -- npx -y gitnexus mcp >> "\$BSLOG" 2>&1 \
         || true
 fi
 
-# --- Done — mark complete and remove shell hooks ---
 touch "\$DONE_FLAG"
 echo "[\$(date)] Bootstrap complete" >> "\$BSLOG"
 
-# Remove the one-shot hook from shell rc files
 for rc in "\$HOME/.bashrc" "\$HOME/.zshrc"; do
     [ -f "\$rc" ] && sed -i '/turboflow-bootstrap/d' "\$rc" 2>/dev/null || true
 done
@@ -933,14 +1079,10 @@ BOOTSTRAPEOF
 
 chmod +x "$BOOTSTRAP_SCRIPT"
 
-# --- Trigger A: Launch immediately in background ---
-# The nohup + disown ensures it survives after setup.sh exits.
-# Sleep 5s to let setup finish and free all memory first.
 (sleep 5 && nohup "$BOOTSTRAP_SCRIPT" >> "$BOOTSTRAP_LOG" 2>&1 &) &
 disown 2>/dev/null || true
 ok "Post-setup bootstrap launched (background, 5s delay)"
 
-# --- Trigger B: One-shot shell hook (fallback if background process is killed) ---
 BOOTSTRAP_HOOK="[ ! -f \"$BOOTSTRAP_DONE\" ] && [ -x \"$BOOTSTRAP_SCRIPT\" ] && (nohup \"$BOOTSTRAP_SCRIPT\" >> \"$BOOTSTRAP_LOG\" 2>&1 &)"
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     if [ -f "$rc" ]; then
@@ -964,11 +1106,12 @@ echo ""
 echo -e "  ${BOLD}Summary:${NC}"
 echo -e "    Core:    Claude Code + Ruflo v3.5 (215 MCP tools, 60+ agents)"
 echo -e "    Plugins: $PLUGINS_INSTALLED/6 (agentic-qe, code-intel, test-intel, perf, teammate, gastown)"
-echo -e "    Memory:  Beads + Native Tasks + AgentDB (3-tier)"
+echo -e "    Memory:  Dolt + Beads + Native Tasks + AgentDB"
 echo -e "    Graph:   GitNexus codebase knowledge graph"
 echo -e "    Time:    ${TOTAL_TIME}s"
 if [ "$NEEDS_BOOTSTRAP" -eq 1 ]; then
 echo -e "    ${YELLOW}Bootstrap:${NC} finishing deferred installs in background (~30-60s)"
+echo -e "             check progress: tail -f $BOOTSTRAP_LOG"
 fi
 echo ""
 echo -e "  ${BOLD}Next:${NC} ${CYAN}claude${NC}  (everything else is automatic)"
@@ -977,7 +1120,7 @@ echo -e "  ${BOLD}Changed from v3.4.1:${NC}"
 echo -e "    • claude-flow@alpha → ${GREEN}ruflo@latest${NC} (rf-* aliases)"
 echo -e "    • 15 plugins → ${GREEN}6 plugins${NC} (9 redundant/domain-specific removed)"
 echo -e "    • Slash commands → ${GREEN}skills${NC} (auto-activated)"
-echo -e "    • No cross-session memory → ${GREEN}Beads${NC} (bd-* aliases)"
+echo -e "    • No cross-session memory → ${GREEN}Dolt + Beads${NC} (bd-* aliases)"
 echo -e "    • No codebase awareness → ${GREEN}GitNexus${NC} (gnx-* aliases)"
 echo -e "    • Manual worktree skill → ${GREEN}native wt-* helpers${NC}"
 echo -e "    • 4 separate core installs → ${GREEN}1 ruflo init${NC}"
