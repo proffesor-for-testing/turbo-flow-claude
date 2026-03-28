@@ -52,15 +52,17 @@ Run a full branch analysis. I need to know exactly where we are and what's left 
 
 5. HEALTH CHECK — run tests, build, and lint right now. Check for pending migrations and missing env vars.
 
-6. GAP ANALYSIS — based on everything above, what is DONE, IN PROGRESS, and NOT STARTED? What's blocking? What can be parallelized?
+6. QUALITY ENGINEERING — run aqe-gate on the branch. Show test coverage gaps, security scan results, and any quality issues found. If tests are missing for changed files, flag them.
+
+7. GAP ANALYSIS — based on everything above, what is DONE, IN PROGRESS, and NOT STARTED? What's blocking? What can be parallelized?
 
 Then give me:
 A. STATUS SUMMARY — 5-10 lines, plain English
-B. PRIORITIZED TODO — generate a TodoWrite ordered by priority and dependency
+B. PRIORITIZED TODO — generate a TodoWrite ordered by priority and dependency, include any aqe-gate findings as tasks
 C. SESSION PLAN — if I have 2-4 hours, what do we tackle first?
 ```
 
-This runs ~15-20 tool calls across git, gitnexus, beads, memory, agentdb, and your test suite. Takes about 2-3 minutes. After that you say "proceed" and start working.
+This runs ~20-25 tool calls across git, gitnexus, beads, memory, agentdb, agentic-qe, and your test suite. Takes about 2-3 minutes. After that you say "proceed" and start working.
 
 **The short version** if you don't need the full analysis:
 ```
