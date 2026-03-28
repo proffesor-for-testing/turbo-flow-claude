@@ -2123,3 +2123,221 @@ mcp__ruflo__browser_fill { target: "@eN", value: "..." }
 ---
 
 *Generated for Turbo Flow v4.0 + Ruflo v3.5. Last updated: March 2026.*
+}
+
+# V4 Definitive Guide — Additions from TurboFlow Session
+
+Apply these additions to the existing V4 Definitive Guide. Each section shows WHERE to insert and WHAT to add.
+
+---
+
+## 1. INSERT AFTER: Section 2 "Session Boot Sequence" (after "If anything fails, run rf-doctor...")
+
+### Pre-Flight Checks (run before boot commands)
+
+```bash
+git stash list && git status --short          # forgotten stashes, uncommitted work
+test -f .env || test -f .env.local || echo "⚠️  NO .env FILE"
+npx prisma migrate status 2>/dev/null || echo "⚠️  Migrations pending"
+df -h . | awk 'NR==2{if($5+0 > 90) print "⚠️  DISK " $5 " FULL"}'
+```
+
+### Post-Boot: Branch Analysis
+
+After boot completes, run a full branch analysis to understand where you are:
+
+```
+Run a full branch analysis:
+1. BRANCH STATE — ahead/behind main, diff summary, uncommitted, stashes, last 10 commits
+2. CODEBASE CHANGES — gitnexus_detect_changes vs main, affected symbols/flows, risk level
+3. BEADS STATUS — open issues, blockers, recently completed, flagged for human, bd lint
+4. MEMORY RECALL — search memory + AgentDB for recent sessions, blockers, patterns, decisions
+5. HEALTH CHECK — run tests, build, lint. Pending migrations? Missing env vars?
+6. QUALITY ENGINEERING — aqe-gate, coverage gaps, security scan
+7. GAP ANALYSIS — what's DONE, IN PROGRESS, NOT STARTED? What's blocking? What parallelizes?
+Give me: A. Status summary (5-10 lines) B. Prioritized TodoWrite C. Session plan for 2-4 hours
+```
+
+### Status HUD
+
+After every action response (file edit, bash, task completion, git op), end with a compact status block:
+
+```
+📍 Branch: feat/name · 3 files changed
+🧠 Memory: Beads ✅ · HNSW ✅ · AgentDB ✅ · Context Autopilot ✅
+🔧 Daemon: running · workers: map ✅ audit ✅ optimize ⏸
+🧪 Tests: passing (42/42) · last run: 3m ago
+💰 Cost: $2.34 · remaining: $12.66/hr
+⚡ Model: Sonnet 4.5 (routed — confidence 0.87)
+```
+
+Show only active systems. On boot show full system table. On errors surface ⚠️ at top, auto-fix, proceed.
+
+---
+
+## 2. INSERT AS NEW SECTION: "2.5. Safety Protocols" (between Session Boot and Three-Tier Memory)
+
+## 2.5. Safety Protocols
+
+### Triple-Gate Merge Protocol
+
+Any merge/rebase/push into `main` (or `master`/`production`/`prod`/`release`) requires **3 consecutive human confirmations** in separate prompt/response turns:
+
+```
+GATE 1 — "🔒 MERGE GATE 1/3: Merging [branch] → main. [changes summary, commit count, risk]. Confirm?"
+GATE 2 — "🔒 MERGE GATE 2/3: Tests: [pass/fail]. Conflicts: [y/n]. Uncommitted: [y/n]. Confirm again?"
+GATE 3 — "🔒 MERGE GATE 3/3: FINAL confirmation. Type 'yes' to execute."
+```
+
+Non-`yes` at any gate = immediate abort. Run `gitnexus_detect_changes` between gates 1–2. Sub-agents/swarm workers must escalate to lead agent. Hotfixes are NOT exempt.
+
+**Does NOT apply to:** feature-to-feature merges, non-primary branch pushes, commits on any branch, branch/tag/worktree creation.
+
+### Destructive Command Safeguards
+
+One confirmation required before: `git reset --hard`, `rm -rf` (project dirs), `prisma migrate reset`, `DROP TABLE/DATABASE`, any `--force` that deletes data.
+
+Format: `⚠️ DESTRUCTIVE: About to run [command]. This will [consequence]. Confirm?`
+
+### Rollback Protocol
+
+When a merge to main breaks things: `git revert --no-commit HEAD` → run tests → `git commit -m "revert: [reason]"` → `git push origin main` (skips Triple-Gate for emergency) → report to human → `bd create "[branch] merge reverted" -t bug -p 0 --json` → `ruv-remember "revert/[branch]" "root cause"`
+
+### Conflict Resolution
+
+Never silently auto-resolve merge conflicts. Simple (non-overlapping): resolve and show. Complex (overlapping logic): show both sides, ask the human. Always test + `gitnexus_detect_changes` after resolving.
+
+### Non-Interactive Shell Commands
+
+Always use force flags — aliased `-i` hangs agents indefinitely: `cp -f`, `mv -f`, `rm -f`, `rm -rf`, `cp -rf`. Also: `scp -o BatchMode=yes`, `apt-get -y`, `HOMEBREW_NO_AUTO_UPDATE=1 brew`.
+
+### Escalation Rule
+
+After 3 failed approaches to the same problem — STOP, explain what was tried, and ask the human. Don't burn tokens on attempt #4+.
+
+---
+
+## 3. REPLACE: Session Protocol "End" line in Section 3
+
+FIND:
+**End:** Close finished work → `bd close <id> --reason "..."` | Create tasks for remaining work → `bd ready --json` to verify state
+
+REPLACE WITH:
+**End:** Close finished work → `bd close <id> --reason "..."` | Create tasks for remaining work | Run quality gates (`npm test && npm run lint && npm run build`) | `bd dolt push` | `git pull --rebase && git push` (MANDATORY — work is NOT complete until push succeeds) | `bd ready --json` to verify state
+
+---
+
+## 4. INSERT AFTER: Section 7.3 "Parallel Implementation" (before Section 8)
+
+### 7.4 — Batch Execution from ADR/DDD
+
+After completing your ADR/DDD plan, execute all items sequentially without stopping between each:
+
+```
+Execute the following batch in order. For each item:
+- Read relevant files, run gitnexus_impact on symbols you'll touch
+- Implement the change with TDD
+- Run tests after each item
+- Log a bead (bd close or bd create for discovered work)
+- Store patterns learned (ruv-remember)
+- Show Status HUD after each item
+- Do NOT stop between items — only stop if tests fail or you hit a blocker
+- If an item fails, log it as a blocker bead and skip to next independent item
+- aqe-gate after each bounded context completes
+
+Summary at end: what completed, what failed, what needs attention.
+
+BATCH:
+1. [ADR-001] — [description]
+2. [ADR-002] — [description]
+3. [ADR-003] — [description]
+...
+```
+
+**Short version:** `Execute all ready beads in dependency order. Don't stop between items. aqe-gate after each context. Summary at end.`
+
+**From plan file:** `Read plans/research/PLAN.md. Execute every ADR in order as a batch. aqe-gate after each context. Summary at end.`
+
+---
+
+## 5. ADD TO: Section 11 "Beads" — Native CLI Commands (after `bd daemon stop`)
+
+```bash
+bd prime                         # Full workflow context dump (commands, session protocol)
+bd remember KEY VALUE            # Persistent knowledge storage (NOT AgentDB — use for project facts)
+bd defer <id>                    # Push issue to later
+bd supersede <id>                # Mark as superseded
+bd human <id>                    # Flag for human decision
+bd stale                         # Find stale issues
+bd orphans                       # Find orphaned issues
+bd lint                          # Check data quality
+bd formula list                  # Available workflow templates
+bd mol pour <n>               # Execute a workflow
+```
+
+---
+
+## 6. REPLACE: Section 11 "Cross-Session Handoff" prompt
+
+FIND:
+```
+I'm ending this session. Before I go:
+1. Create issues for remaining work...
+...
+4. Summarize what a new agent would need to know to continue
+```
+
+REPLACE WITH:
+```
+I'm ending this session. Before I go:
+1. Create issues for remaining work:
+   bd create "Continue [task description]" -p 1 -t task
+   bd create "Investigate [open question]" -p 2 -t task
+2. Close completed tasks:
+   bd close <id> --reason "Completed: [summary]"
+3. Run quality gates: npm test && npm run lint && npm run build
+4. gnx-analyze — update graph
+5. neural-patterns — capture what was learned
+6. MANDATORY PUSH:
+   bd dolt push && git pull --rebase && git push
+   git status  # MUST show "up to date with origin"
+7. Summarize what a new agent would need to know to continue
+Work is NOT complete until git push succeeds.
+```
+
+---
+
+## 7. ADD TO: Section 33 "Troubleshooting" table
+
+| Agent hangs on shell command | Use `-f` flags: `cp -f`, `mv -f`, `rm -f` — aliased `-i` causes hangs |
+| Merge to main blocked | Triple-Gate requires 3 human confirmations — this is by design |
+| Work lost after session | Session end protocol requires `git push` — check `git status` |
+| AgentDB returns unavailable | `npm install -g @claude-flow/memory && npx ruflo@latest doctor --fix` |
+| Agent spinning on same problem | 3-strikes rule: after 3 failed attempts it should stop and ask you |
+
+---
+
+## 8. ADD TO: Section 10 "Git Worktrees" — after "Agent Roles" table
+
+### Merge Protocol for Worktrees
+
+When merging worktree branches:
+- **To feature branch:** merge directly, no special protocol
+- **To main:** Triple-Gate required for EACH merge
+- **Test BEFORE merging** — run tests on the feature branch first
+- **`wt-clean` is MANDATORY after merge** — not optional cleanup
+- **Conflicts:** never auto-resolve silently, show both sides for complex conflicts
+
+---
+
+## 9. UPDATE: Table of Contents
+
+Add after entry 2:
+```
+2.5. [Safety Protocols](#25-safety-protocols)
+```
+
+Add after entry 7.3 within section 7:
+```
+7.4. [Batch Execution from ADR/DDD](#74--batch-execution-from-adrddd)
+```
