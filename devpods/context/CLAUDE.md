@@ -78,16 +78,16 @@ After the boot protocol completes, show a full system status instead of the comp
 ╠──────────────────────────────────────────────────────╣
 ║  Daemon              ✅ running (3 workers)          ║
 ║  Hooks               ✅ 17 registered                ║
-║  Context Autopilot   ✅ archiving (42 turns stored)  ║
+║  Context Autopilot   ✅ archiving (42 turns restored)║
 ║  Beads               ✅ 8 open issues · 2 blockers   ║
-║  Ruflo Memory        ✅ 156 entries · HNSW indexed   ║
+║  Ruflo Memory        ✅ 156 entries · HNSW healthy   ║
 ║  AgentDB             ✅ 8 controllers online         ║
-║  GitNexus            ✅ fresh (last: 2m ago)         ║
 ║  Intelligence        ✅ 340 patterns · Q-table warm  ║
+║  GitNexus            ✅ fresh (last: 2m ago)         ║
 ║  Swarm               ✅ star topology · 4 max        ║
+║  Security            ✅ pre-edit hooks verified      ║
 ║  Agent Teams         ⏸ not spawned                   ║
 ║  Hive-Mind           ⏸ not initialized               ║
-║  Security            ✅ pre-edit hooks active         ║
 ╠──────────────────────────────────────────────────────╣
 ║  PRE-FLIGHT                                          ║
 ╠──────────────────────────────────────────────────────╣
@@ -275,36 +275,53 @@ df -h . | awk 'NR==2{if($5+0 > 90) print "⚠️  DISK " $5 " FULL"}'
 npx ruflo@latest daemon start
 npx ruflo@latest daemon status
 
-# 2. HOOKS SESSION START — fires context restore, loads intelligence
+# 2. HOOKS — verify registration, then fire session start
+cat .claude/settings.json | grep -c "hook" || echo "⚠️  NO HOOKS REGISTERED — run: npx ruflo@latest init"
 npx ruflo@latest hooks session-start --session-id ${PROJECT_ID}
+#    ↳ fires context-persistence-hook (restores archived turns from SQLite)
+#    ↳ fires intelligence loader (restores Q-table, neural weights)
+#    ↳ fires context autopilot (begins archiving new turns)
 
-# 3. BEADS — project truth
-bd ready
-bd list --type blocker
+# 3. BEADS — load project truth
+bd ready                                                # loads all open issues, blockers, decisions
+bd list --type blocker                                  # surface anything blocking work
 
-# 4. INTELLIGENCE — what the system has learned
+# 4. INTELLIGENCE — verify warm, pretrain if cold
 npx ruflo@latest hooks intelligence stats
 node .claude/helpers/hook-handler.cjs stats
+#    ↳ If intelligence shows 0 patterns or "cold": run npx ruflo@latest hooks pretrain --depth deep
 
-# 5. MEMORY — semantic recall (HNSW-indexed)
+# 5. RUFLO MEMORY — verify index health, then recall context
+npx ruflo@latest memory stats                           # check entry count + index health
 npx ruflo@latest memory search -q "${PROJECT_ID} current state" --limit 5
 npx ruflo@latest memory search -q "${PROJECT_ID} blockers" --limit 3
 
-# 6. GITNEXUS — codebase graph freshness
-npx gitnexus status
-# If stale: npx gitnexus analyze
-# If embeddings exist: npx gitnexus analyze --embeddings
+# 6. AGENTDB — verify MCP controllers are online
+#    Call from MCP: agentdb_pattern-search({ query: "${PROJECT_ID} health check", limit: 1 })
+#    ↳ If returns { available: false }: run npm install -g @claude-flow/memory && npx ruflo@latest doctor --fix
 
-# 7. SWARM INIT — solo dev star topology (anti-drift)
+# 7. GITNEXUS — check freshness, auto-reindex if stale
+npx gitnexus status
+#    ↳ If stale (last analyzed > 1 hour or files changed since last index):
+#       npx gitnexus analyze --embeddings    (if embeddings exist)
+#       npx gitnexus analyze                 (if no embeddings)
+#    ↳ Do NOT skip this — a stale index means gitnexus_impact gives wrong answers
+
+# 8. SWARM INIT — solo dev star topology (anti-drift)
 npx ruflo@latest swarm init --topology star --max-agents 4 --strategy solo_developer
 
-# 8. ROUTE TODAY'S WORK
+# 9. SECURITY — verify pre-edit hooks are active
+npx ruflo@latest hooks worker list | grep -q "audit" || echo "⚠️  AUDIT WORKER NOT RUNNING"
+#    ↳ Pre-edit hooks (PreToolUse:Write/Edit) should show as registered in step 2
+#    ↳ If not: npx ruflo@latest doctor --fix
+
+# 10. ROUTE TODAY'S WORK
 npx ruflo@latest hooks route "${PROJECT_ID} session goals" --include-explanation
 ```
 
 > Replace `${PROJECT_ID}` with your project name (e.g. `rentamls`, `myapp`). Set once in PROJECT CONTEXT below.
 
-**Why this works:** Ruflo's `SessionStart` hook auto-fires `context-persistence-hook` which restores archived conversation turns from SQLite — context is never lost to compaction. The manual boot adds semantic memory recall and intelligence initialization on top.
+**Why this works:** Every subsystem has an explicit primer, not just a status check. `session-start` restores archived context from SQLite. `bd ready` loads project truth. `memory stats` + `search` verifies and warms the HNSW index. `agentdb_pattern-search` confirms MCP controllers are alive. `gitnexus status` triggers auto-reindex if stale. Nothing boots in a "maybe it's working" state.
 
 **After boot completes:** Output the full TURBOFLOW SESSION LIVE status table (defined in Response Format section). Every system line must reflect actual output from the boot commands — do not guess or assume status.
 
