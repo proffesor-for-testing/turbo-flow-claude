@@ -1,14 +1,16 @@
 # CLAUDE.md — TurboFlow 4.0 / Ruflo v3.5
 
-## Identity
-TurboFlow 4.0 — composed agentic development environment.
-Orchestration: Ruflo v3.5 (259 MCP tools · 60+ agents · 8 AgentDB controllers · 17 hooks · 12 workers).
-Memory: Five-tier (Context Autopilot → Beads → Ruflo Memory/HNSW → AgentDB → Native Tasks).
-Isolation: Git worktrees per parallel agent.
+```
+PROJECT_ID=rentamls
+BRANCH=feat/search-feature
+```
+
+**Primary model: GLM-5.1** (via Coding Plan). Claude Opus on-demand for complex reasoning.
+**Tech Stack:** Next.js 16.2.0, React 19, Prisma ORM, PostgreSQL (prod) / SQLite (dev), Railway
 
 ---
 
-## BEHAVIORAL RULES (always enforced)
+## BEHAVIORAL RULES
 
 - Do what has been asked; nothing more, nothing less
 - NEVER create files unless absolutely necessary — prefer editing existing files
@@ -16,309 +18,262 @@ Isolation: Git worktrees per parallel agent.
 - NEVER save working files or tests to the root folder
 - ALWAYS read a file before editing it
 - NEVER commit secrets, credentials, or .env files
-- Never continuously check status after spawning a swarm — wait for results
-- **NEVER merge to `main` without the Triple-Gate Merge Protocol**
-- **NEVER force-push to `main` under any circumstances**
-- **NEVER bypass or batch the 3-confirmation merge sequence — each gate is a separate turn**
-- ALWAYS end action responses with the Status HUD
-- NEVER run destructive commands without confirmation (see DESTRUCTIVE COMMAND SAFEGUARDS)
+- ALWAYS use non-interactive shell flags — `cp -f`, `mv -f`, `rm -f`
+- ALWAYS use `--json` flag with `bd` commands
 - ALWAYS run tests before committing (if a test suite exists)
 - After 3 failed approaches to the same problem — STOP and ask the human
-- ALWAYS clean up worktrees after merge — `wt-clean` is mandatory
-- ALWAYS use non-interactive shell flags — `cp -f`, `mv -f`, `rm -f` — aliased `-i` hangs agents
-- ALWAYS use `--json` flag with `bd` commands
+- **NEVER merge to `main` without the Triple-Gate Merge Protocol**
+- **NEVER force-push to `main` under any circumstances**
+- Batch ALL related operations in a single message (todos, agent spawns, file ops, memory ops)
 
 ---
 
-## STATUS HUD (always enforced)
+## WORK QUALITY
 
-After every action response (file edit, bash, task completion, git op), end with:
+### Plan First
+- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
+- Write detailed specs upfront to reduce ambiguity
+- If something goes sideways, STOP and re-plan — don't keep pushing a broken approach
+- Use plan mode for verification steps, not just building
 
-```
-───────────────────────────────────
-📍 Branch: feat/user-system · 3 files changed
-🧠 Memory: Beads ✅ · Ruflo HNSW ✅ · AgentDB ✅ · Context Autopilot ✅
-🔧 Daemon: running · workers: map ✅ audit ✅ optimize ⏸
-🌿 Worktrees: 2 active (if any)
-🤖 Agents: 2/4 active (if spawned)
-🧪 Tests: passing (42/42) · last run: 3m ago
-💰 Session cost: $2.34 · budget remaining: $12.66/hr
-⚡ Model: Sonnet 4.5 (routed — confidence 0.87)
-───────────────────────────────────
-```
+### Autonomous Execution
+- When given a bug report: just fix it. Don't ask for hand-holding
+- Point at logs, errors, failing tests — then resolve them
+- Go fix failing CI tests without being told how
+- Use subagents liberally to keep main context window clean — offload research, exploration, and parallel analysis
 
-Show only active systems — omit lines for inactive ones. Always show Branch + Memory + Daemon. Show 🧪 if tests exist. Show ⚠️ for unresolved pre-flight warnings. Do NOT show after pure conversation. On task completion add `✅ Completed:` summary above HUD. On errors surface `⚠️` at TOP, auto-fix, proceed. On boot show full system status table with 🟢/🟡/🔴 overall.
+### Verification Before Done
+- Never mark a task complete without proving it works
+- Diff behavior between main and your changes when relevant
+- Ask yourself: "Would a staff engineer approve this?"
+- Run tests, check logs, demonstrate correctness
+
+### Demand Elegance (Balanced)
+- For non-trivial changes: pause and ask "is there a more elegant way?"
+- If a fix feels hacky: implement the proper solution, not the quick patch
+- Skip this for simple, obvious fixes — don't over-engineer
+- Challenge your own work before presenting it
+
+### Self-Improvement Loop
+- After ANY correction from the human, store the lesson: `bd remember "lesson/<topic>" "what went wrong and the rule to prevent it"`
+- Write rules for yourself that prevent the same mistake
+- Review stored lessons at session start: `npx ruflo@latest memory search -q "lesson" --limit 10`
 
 ---
 
-## TRIPLE-GATE MERGE PROTOCOL (zero exceptions)
+## TRIPLE-GATE MERGE PROTOCOL
 
-Any merge/rebase/push into `main` (`master`/`production`/`prod`/`release`) = 3 consecutive human confirmations. No agent may merge autonomously.
+Any merge into `main` (`master`/`production`/`prod`/`release`) = 3 consecutive human confirmations. No agent may merge autonomously.
 
 ```
-GATE 1 — "🔒 MERGE GATE 1/3: Merging [branch] → main. [changes, commits, risk]. Confirm?"
-GATE 2 — "🔒 MERGE GATE 2/3: Tests: [pass/fail]. Conflicts: [y/n]. Uncommitted: [y/n]. Confirm?"
+GATE 1 — "🔒 MERGE GATE 1/3: Merging [branch] → main. [changes, risk]. Confirm?"
+GATE 2 — "🔒 MERGE GATE 2/3: Tests: [pass/fail]. Conflicts: [y/n]. Confirm?"
 GATE 3 — "🔒 MERGE GATE 3/3: FINAL. Type 'yes' to execute."
 ```
 
-Each gate = separate turn. Non-`yes` = abort. Run `gitnexus_detect_changes` between gates 1–2. Sub-agents escalate to lead. Hotfixes not exempt. Does NOT apply to: feature-to-feature merges, non-primary branch pushes, commits, branch/tag/worktree creation.
+Each gate = separate turn. Non-`yes` = abort. Does NOT apply to feature-to-feature merges.
 
----
+**Destructive commands** (`git reset --hard`, `rm -rf`, `prisma migrate reset`, `DROP TABLE`): one confirmation. Format: `⚠️ DESTRUCTIVE: [command]. [consequence]. Confirm?`
 
-## DESTRUCTIVE COMMAND SAFEGUARDS
+**Rollback:** `git revert --no-commit HEAD` → test → commit → push (skips Triple-Gate) → tell human → `bd create` the bug → `bd remember "revert/[branch]" "cause"`
 
-One confirmation before: `git reset --hard`, `rm -rf` (project dirs), `prisma migrate reset`, `DROP TABLE`, any `--force` that deletes data. Format: `⚠️ DESTRUCTIVE: [command]. [consequence]. Confirm?`
-
-## ROLLBACK PROTOCOL
-
-Main breaks → `git revert --no-commit HEAD` → test → commit → push (skips Triple-Gate) → tell human → `bd create "[branch] reverted" -t bug -p 0 --json` → `ruv-remember "revert/[branch]" "cause"`
-
-## CONFLICT RESOLUTION
-
-Never silently auto-resolve. Simple (non-overlapping): resolve + show. Complex (overlapping logic): show both sides, ask human. Always test + `gitnexus_detect_changes` after.
-
----
-
-## THE PRIME DIRECTIVE
-
-**Human describes outcomes. You generate tasks. You execute. They review.**
-Don't ask what to do. Boot memory → read codebase → TodoWrite → confirm plan → execute → report.
+**Conflicts:** Never silently auto-resolve. Simple: resolve + show. Complex: show both sides, ask human.
 
 ---
 
 ## MODEL ROUTING
 
-Check hooks for `[AGENT_BOOSTER_AVAILABLE]` (Edit tool, $0) and `[TASK_MODEL_RECOMMENDATION]`.
+**GLM-5.1 (default):** 200K context, 131K max output. No tiered routing. Generate complete files in one pass for new files >100 lines. Give full task context and let it chain steps autonomously.
 
-| Tier | Handler | When |
-|------|---------|------|
-| 1 | Agent Booster (WASM) | Simple transforms — skip LLM |
-| 2 | Haiku 4.5 | Formatting, quick lookups |
-| 3 | Sonnet 4.5 / Opus 4.6 | Standard coding / complex reasoning |
+**Claude Opus (on-demand):** Check `[AGENT_BOOSTER_AVAILABLE]` / `[TASK_MODEL_RECOMMENDATION]` hooks. Tier 1: Agent Booster (WASM, $0) for simple transforms. Tier 2: Haiku. Tier 3: Sonnet/Opus. Hard cap: $15/hr.
 
-Hard cap: $15/hr. Use Haiku for simple tasks.
+**Token optimization:** Use `--json` on all `bd` commands. Prefer `bd ready --json` over `bd list`. Use `bd prime` sparingly. When context fills: `bd compact`. Offload verbose explanations to `bd comments` and `memory store` instead of chat.
+
+**MCP tools:** CLI tools (bd, npx ruflo, npx gitnexus) work regardless of model. If MCP server calls fail with GLM-5.1, use the CLI equivalent. Run `npx ruflo@latest doctor --fix` to check MCP registration.
 
 ---
 
-## SESSION BOOT PROTOCOL (every session)
+## BEADS (bd) — Project Truth
+
+ALL issue tracking, decisions, blockers, and discovered work goes in Beads — never in markdown TODOs.
+
+**CRITICAL:** Never directly read/write `.beads/issues.jsonl`. Command is `bd`, NOT `beads`. Run `bd sync flush` after batch ops. Every `bd create` MUST include `--description` — self-sufficient, as if the reader has never seen your conversation.
+
+**Core commands:**
 
 ```bash
-# 0. PRE-FLIGHT
-git stash list && git status --short
-test -f .env || test -f .env.local || echo "⚠️  NO .env"
-npx prisma migrate status 2>/dev/null || echo "⚠️  Migrations pending"
-df -h . | awk 'NR==2{if($5+0 > 90) print "⚠️  DISK " $5 " FULL"}'
-
-# 1. DAEMON
-npx ruflo@latest daemon start && npx ruflo@latest daemon status
-
-# 2. HOOKS — verify registration + fire session start
-cat .claude/settings.json | grep -c "hook" || echo "⚠️  NO HOOKS — run: npx ruflo@latest init"
-npx ruflo@latest hooks session-start --session-id ${PROJECT_ID}
-
-# 3. BEADS
-bd ready --json && bd list --type blocker
-
-# 4. INTELLIGENCE — if 0 patterns: npx ruflo@latest hooks pretrain --depth deep
-npx ruflo@latest hooks intelligence stats
-
-# 5. MEMORY — verify health then recall
-npx ruflo@latest memory stats
-npx ruflo@latest memory search -q "${PROJECT_ID} current state" --limit 5
-
-# 6. AGENTDB — probe: agentdb_pattern-search({ query: "health check", limit: 1 })
-#    If { available: false }: npm install -g @claude-flow/memory && npx ruflo@latest doctor --fix
-
-# 7. GITNEXUS — auto-reindex if stale
-npx gitnexus status
-# If stale: npx gitnexus analyze --embeddings (or without if none exist)
-
-# 8. SWARM
-npx ruflo@latest swarm init --topology star --max-agents 4 --strategy solo_developer
-
-# 9. SECURITY
-npx ruflo@latest hooks worker list | grep -q "audit" || echo "⚠️  AUDIT WORKER NOT RUNNING"
-
-# 10. ROUTE
-npx ruflo@latest hooks route "${PROJECT_ID} session goals" --include-explanation
+bd ready --json                          # What's unblocked? (session start)
+bd update <id> --claim --json            # Claim before starting
+bd comments add <id> "progress" --json   # Record findings mid-task
+bd close <id> --reason "what+why" --json # Complete (prove it works first)
+bd create "Title" --description="full context" -t bug|feature|task -p 0-4 --json
+bd remember "key" "value"                # Persistent knowledge
+bd compact                               # Summarize old beads (save context)
+bd prime                                 # Full project state (use sparingly — heavy)
+bd dolt push                             # Sync to remote (session end)
+bd stale && bd orphans && bd lint        # Hygiene
 ```
 
-After boot: output full status table reflecting actual command output.
+**Creating issues — always include --description:**
+
+```bash
+# Bug (include: what, where, repro steps, expected vs actual)
+bd create "Login redirect fails on expired JWT" \
+  --description="Middleware returns 401 but client catches as generic error instead of routing to /login. File: src/middleware.ts:45. Repro: let token expire, click nav. Expected: /login redirect. Actual: blank 401." \
+  -t bug -p 1 --json
+
+# Feature (include: what, where to wire it, acceptance criteria)
+bd create "Add bedroom/bathroom filter" \
+  --description="Filter listings by min/max bedrooms/bathrooms. Wire to /api/listings query params. UI in SearchFilters component. Acceptance: AND logic with price filter, URL params persist on refresh." \
+  -t feature -p 2 --json
+
+# Sub-task: bd create "..." --parent bd-a3f8 -t task --json
+# Discovered: bd create "..." --deps discovered-from:<id> --json
+# Blocked: bd update <id> --status blocked --json + create blocker with --deps blocks:<id>
+# Defer/Supersede/Escalate: bd defer|supersede|human <id> --json
+```
+
+**Types:** `bug` · `feature` · `task` · `epic` · `chore`  **Priorities:** `0` critical → `4` backlog
 
 ---
 
-## SESSION END PROTOCOL
+## RUFLO MEMORY & AGENTDB
 
-**Work is NOT complete until `git push` succeeds. NEVER say "ready to push when you are" — YOU push.**
+### HNSW Pattern Store (Ruflo Memory)
 
 ```bash
-# 1. File remaining work + close completed
-bd create "Remaining" --description="Details" -t task -p 2 --json
-bd close <id> --reason "Done" --json
+npx ruflo@latest memory search -q "keywords" --limit 5                    # BEFORE solving
+npx ruflo@latest memory store --namespace rentamls --key "area/fix" --value "what+why"  # AFTER solving
+```
 
-# 2. Quality gates
-npm test && npm run lint && npm run build
+Aliases: `ruv-remember` · `ruv-recall` · `mem-search` · `mem-stats`
 
-# 3. Persist learning
+### AgentDB (MCP Tools)
+
+**Search BEFORE writing fix code** — `agentdb_pattern-search` may already have a known solution.
+
+Other tools: `agentdb_pattern-store` (store novel solutions) · `agentdb_context-synthesize` (combine context) · `agentdb_semantic-route` (pick approach) · `agentdb_hierarchical-store/recall` (knowledge trees)
+
+---
+
+## HOOKS & LEARNING
+
+```bash
+# Session start
+npx ruflo@latest hooks session-start --session-id rentamls --start-daemon
+
+# Before complex task
+npx ruflo@latest hooks route "<task>" --include-explanation
+
+# After task completion
+npx ruflo@latest hooks post-task --task-id "<id>" --success true --store-results true
+
+# After significant edits
+npx ruflo@latest hooks post-edit --file "<file>" --train-patterns
+
+# Session end
 npx ruflo@latest hooks session-end --export-metrics true --persist-patterns true
-npx ruflo@latest memory store --namespace ${PROJECT_ID} --key "session/$(date +%Y-%m-%d)" --value "completed: [X], next: [Z]"
 
-# 4. Sync + push (MANDATORY)
-bd dolt push
-git add -A && git commit -m "chore: session end" 2>/dev/null
-git pull --rebase && git push
-git status  # MUST show "up to date with origin"
-
-# 5. Daemon checkpoint
-npx ruflo@latest daemon trigger audit
+# Diagnostics
+npx ruflo@latest hooks intelligence stats     # What's been learned?
+npx ruflo@latest hooks pretrain --depth deep  # Bootstrap (if 0 patterns)
+npx ruflo@latest hooks worker dispatch --trigger audit  # Background audit
 ```
 
 ---
 
-## MEMORY SYSTEM
+## SESSION WORKFLOW
 
-### Layer 1: Context Autopilot (automatic)
-`UserPromptSubmit` archives to SQLite. `PreCompact` blocks compaction. `SessionStart` restores. If broken: `npx ruflo@latest doctor --fix`
+**Start:**
+1. `npx ruflo@latest hooks session-start --session-id rentamls --start-daemon`
+2. `bd ready --json` + `bd list --type blocker --json`
+3. `npx ruflo@latest memory search -q "lesson" --limit 10` — review past lessons
+4. `npx ruflo@latest memory search -q "rentamls current state" --limit 5`
 
-### Layer 2: Beads (bd) — Project Truth
-Git-native JSONL. ALL issue tracking — no markdown TODOs.
+**Before non-trivial work:** `agentdb_pattern-search` → `mem-search` → `hooks route`
+
+**During:** Claim beads → record progress in `bd comments` → `bd create` discovered work → `hooks post-edit` after significant changes
+
+**After task:** Verify it works → `bd close` with proof → `agentdb_pattern-store` if novel → `memory store` → `hooks post-task` → `aqe-gate`
+
+**End:**
+1. `bd create` remaining work with full descriptions
+2. `bd close` finished work
+3. Quality gates: `npm test && npm run build`
+4. `bd dolt push && git push` — **Work is NOT done until `git push` succeeds. YOU push.**
+5. `npx ruflo@latest hooks session-end --export-metrics true --persist-patterns true`
+
+---
+
+## QUALITY & SECURITY
 
 ```bash
-bd ready --json                                    # unblocked work
-bd create "Title" --description="Details" -t bug|feature|task|epic|chore -p 0-4 --json
-bd create "Title" -p 2 --deps discovered-from:<id> --json
-bd update <id> --claim --json
-bd close <id> --reason "Done" --json
-bd defer <id> | bd supersede <id> | bd human <id>
-bd stale | bd orphans | bd lint                    # hygiene
-bd prime                                           # full workflow context
-bd remember "key" "value"                          # persistent knowledge
-bd dolt push | bd dolt pull
+aqe-gate                                   # Full quality gate — required before merging
+aqe-generate                               # Generate tests for new code
+npx ruflo@latest security scan --depth full  # Security scan
+npx ruflo@latest security cve --check        # CVE check
 ```
-
-Types: `bug`·`feature`·`task`·`epic`·`chore`. Priorities: `0` critical → `4` backlog.
-
-### Layer 3: Ruflo Memory — HNSW
-```bash
-npx ruflo@latest memory store --namespace ${PROJECT_ID} --key "area/fix" --value "solution"
-npx ruflo@latest memory search -q "keywords" --limit 5
-# Aliases: ruv-remember | ruv-recall | mem-search | mem-stats
-```
-
-### Layer 4: AgentDB v3 — MCP Tools
-`agentdb_pattern-search` (USE BEFORE solving bugs) · `agentdb_pattern-store` · `agentdb_context-synthesize` · `agentdb_semantic-route` · `agentdb_hierarchical-store/recall`
-
-### Layer 5: Native Tasks (TodoWrite)
-Batch ALL todos in ONE call (5–10+ min). Never call TodoWrite multiple times per session.
 
 ---
 
 ## PARALLEL EXECUTION
 
-**Pattern A — Swarm:** Init → spawn ALL agents in ONE message → ONE TodoWrite → store state. Always concurrent.
-
-**Pattern B — Worktrees:** `git worktree add .worktrees/feat-a -b feat/feat-a`. Test before merging. Triple-Gate for main. `wt-clean` after.
-
-**Pattern C — Headless:** `claude -p "task" &` | `--model haiku` | `--max-budget-usd 0.50` | `--resume "id" --fork-session`
-
----
-
-## ISOLATION RULES
-
-One worktree per agent. PG Vector isolation via `$DATABASE_SCHEMA`. No `--dangerously-skip-permissions` on bare metal. Always `gitnexus_impact` before shared symbols. Always `gitnexus_detect_changes` before commits.
-
-## AGENT TEAMS
-
-`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` enabled. Lead → up to 3 teammates (depth 2). 3+ blocked → alert human. Create tasks before spawning. `run_in_background: true`. Sub-agents cannot merge to main — escalate to lead.
-
-## HIVE-MIND
+**Swarm:** Always hierarchical topology. Spawn ALL agents in ONE message. Use subagents to keep main context clean — one task per subagent for focused execution.
 
 ```bash
-npx ruflo@latest hive-mind init --topology hierarchical-mesh --consensus raft --name ${PROJECT_ID}-sprint
-npx ruflo@latest hive-mind spawn --agents 4 --strategy specialized
-npx ruflo@latest hive-mind resume --name ${PROJECT_ID}-sprint
+npx ruflo@latest swarm init --topology hierarchical --max-agents 8 --strategy specialized
+Task("Architect", "Design...", "system-architect")
+Task("Coder", "Implement...", "coder")
+Task("Tester", "Write tests...", "tester")
+```
+
+**Worktrees:** One per agent. Each gets own `$DATABASE_SCHEMA`. Test before merge. `wt-clean` after.
+
+```bash
+git worktree add .worktrees/feat-a -b feat/feat-a
+```
+
+**Agent Teams:** `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`. Lead → up to 3 teammates (depth 2). Sub-agents cannot merge to main. **Requires API key sourced in `~/.bashrc`** — verify with `echo $ANTHROPIC_API_KEY`.
+
+---
+
+## GITNEXUS
+
+Run blast radius before editing shared symbols: `gitnexus_impact({target: "name", direction: "upstream"})`. HIGH/CRITICAL = warn human. Pre-commit: `gitnexus_detect_changes({scope: "staged"})`. Stale index: `npx gitnexus analyze`. Never find-and-replace symbols — use `gitnexus_rename`.
+
+---
+
+## STATUS HUD
+
+After action responses (not pure conversation):
+
+```
+───────────────────────────────────
+📍 Branch: <branch> · <N> files changed
+🧪 Tests: <status> · ⚡ Model: GLM-5.1 | Opus
+───────────────────────────────────
 ```
 
 ---
 
-## HOOKS (automatic)
+## ENVIRONMENT
 
-`UserPromptSubmit` (archive) · `PreToolUse:Write/Edit` (verify) · `PostToolUse:Write/Edit` (record) · `PreCompact` (block) · `SessionStart` (restore) · `SessionEnd` (persist) · `TeammateIdle` (auto-assign) · `TaskCompleted` (train)
+**Required:** DATABASE_URL, JWT_SECRET, OPENROUTER_API_KEY, NEXT_PUBLIC_APP_URL
+**Billing:** CONEKTA_PUBLIC_KEY, CONEKTA_PRIVATE_KEY, CONEKTA_WEBHOOK_SECRET, BILLING_ENCRYPTION_KEY
+**Optional:** RESEND_API_KEY
 
-Key manual: `hooks session-start|end|restore` · `hooks route` · `hooks post-task` · `hooks pretrain --depth deep` · `hooks intelligence stats` · `hooks worker list|dispatch`
+## RAILWAY
 
----
+Builder: DOCKERFILE (not NIXPACKS). healthcheckTimeout ≥ 5000ms. Dockerfile: node:20-slim, CMD runs migrations via `scripts/docker-start.sh`. If healthcheck hangs: remove it. 502 = check migrations. Build fails = TypeScript errors.
 
-## GOAL-TO-TASK PROTOCOL
+## COMMON FIXES
 
-1. Boot (skip if booted) → 2. Route goal → 3. Recall: `memory search` + `agentdb_pattern-search` → 4. Read files + `gitnexus_impact` → 5. ONE TodoWrite (5–10+) → 6. Present plan, wait for confirm → 7. Execute parallel → 8. Test → 9. `post-task` + `ruv-remember` → 10. Session end
+Next.js 16 async params: `{ params }: { params: Promise<{ id: string }> }` then `const { id } = await params`
 
----
+Prisma sync: `cp prisma/schema.prisma prisma/schema.prod.prisma` after every schema change.
 
-## SECURITY
+## CURRENT WORK: SEARCH (feat/search-feature)
 
-`npx ruflo@latest security scan --depth full` · `security audit|cve|threats|validate|report`
-
-Pre-edit hooks enforce: no secrets, no mocks in prod, HTTPS, validated inputs.
-
-## HEALTH
-
-`npx ruflo@latest doctor --fix` · `turbo-status` · `rf-doctor`
-
----
-
-## PROJECT CONTEXT
-<!-- Fill in per project. Everything above is universal. -->
-
-```
-PROJECT_ID=your-project-name
-```
-
-Fill in below: tech stack, required env vars (no values), known issues, architecture decisions.
-
----
-
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
-
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
-
-## Always Do
-- **MUST** `gitnexus_impact({target: "symbolName", direction: "upstream"})` before editing any symbol.
-- **MUST** `gitnexus_detect_changes()` before committing.
-- **MUST warn user** on HIGH/CRITICAL risk.
-- Use `gitnexus_query` instead of grep. Use `gitnexus_context` for full symbol view.
-
-## When Debugging
-1. `gitnexus_query({query: "<symptom>"})` 2. `gitnexus_context({name: "<suspect>"})` 3. `READ gitnexus://repo/${PROJECT_ID}/process/{name}` 4. Regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})`
-
-## When Refactoring
-- Rename: `gitnexus_rename({..., dry_run: true})` first. Extract: `context` + `impact` first. After: `detect_changes({scope: "all"})`.
-
-## Never Do
-- NEVER edit without `gitnexus_impact`. NEVER ignore HIGH/CRITICAL. NEVER find-and-replace — use `gitnexus_rename`. NEVER commit without `detect_changes`.
-
-## Tools
-| Tool | Command |
-|------|---------|
-| `query` | `gitnexus_query({query: "..."})` |
-| `context` | `gitnexus_context({name: "..."})` |
-| `impact` | `gitnexus_impact({target: "...", direction: "upstream"})` |
-| `detect_changes` | `gitnexus_detect_changes({scope: "staged"})` |
-| `rename` | `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` |
-| `cypher` | `gitnexus_cypher({query: "MATCH ..."})` |
-
-## Risk: d=1 WILL BREAK (must update) · d=2 LIKELY AFFECTED (test) · d=3 MAY NEED TESTING
-
-## Resources
-`gitnexus://repo/${PROJECT_ID}/context` · `clusters` · `processes` · `process/{name}`
-
-## Pre-Finish Check
-1. `impact` run for all modified symbols 2. No HIGH/CRITICAL ignored 3. `detect_changes` confirms scope 4. All d=1 dependents updated
-
-## Index: `npx gitnexus analyze` (add `--embeddings` to preserve them). PostToolUse hook auto-updates after commit/merge.
-
-## Skills
-`.claude/skills/gitnexus/gitnexus-exploring|impact-analysis|debugging|refactoring|guide|cli/SKILL.md`
-
-<!-- gitnexus:end -->
+Phase 0 in progress: ✅ middleware fix, ✅ pg_trgm migration created, ⏳ run migration + verify.
+Phases: 0→pg_trgm · 1→filters+UI · 2→tsvector · 3→cursor pagination · 4→faceting+autocomplete.
+Docs: `docs/search/PR-REQUIREMENTS.md` · `docs/search/ADR-SEARCH-TECHNOLOGY.md` · `docs/search/IMPLEMENTATION-ROADMAP.md`
