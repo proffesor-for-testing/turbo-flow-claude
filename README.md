@@ -7,12 +7,21 @@
 ![MCP Tools](https://img.shields.io/badge/MCP_Tools-215+-green?style=for-the-badge)
 ![Plugins](https://img.shields.io/badge/Plugins-6-critical?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-orange?style=for-the-badge)
+![Adventure Wave Labs](https://img.shields.io/badge/Adventure_Wave_Labs-Builder-ff6b6b?style=for-the-badge)
 
 **Complete Agentic Development Environment — Ruflo v3.5 + Beads + Worktrees + Agent Teams**
+
+*Built & Presented by [Adventure Wave Labs](https://github.com/adventurewavelabs)*
 
 [Quick Start](#-quick-start) • [Installation](#-what-gets-installed) • [Plugins](#-plugins-6) • [Commands](#️-key-commands) • [Migration](#-migrating-from-v3x) • [Resources](#-resources)
 
 </div>
+
+---
+
+## About Adventure Wave Labs
+
+**Adventure Wave Labs** is the team behind Turbo Flow — a complete agentic development environment built for the Claude ecosystem. We design, build, and maintain the tooling that brings together orchestration, memory, codebase intelligence, and agent isolation into a single streamlined workflow.
 
 ---
 
@@ -57,7 +66,7 @@
 
 ```
 +------------------------------------------------------------------+
-|                       TURBO FLOW v4.0                             |
+|              TURBO FLOW v4.0 — Adventure Wave Labs                |
 +------------------------------------------------------------------+
 |  INTERFACE                                                        |
 |  +---------------+  +---------------+  +---------------+          |
@@ -132,13 +141,13 @@ sudo install devpod /usr/local/bin
 
 ```bash
 # DevPod (recommended)
-devpod up https://github.com/marcuspat/turbo-flow --ide vscode
+devpod up https://github.com/adventurewavelabs/turbo-flow --ide vscode
 
 # Codespaces
 # Push to GitHub → Open in Codespace → runs automatically
 
 # Manual
-git clone https://github.com/marcuspat/turbo-flow -b main
+git clone https://github.com/adventurewavelabs/turbo-flow -b main
 cd turbo-flow
 chmod +x devpods/setup.sh
 ./devpods/setup.sh
@@ -419,17 +428,24 @@ turbo-help
 
 | Resource | Link |
 |:---------|:-----|
+| Adventure Wave Labs | [GitHub: adventurewavelabs](https://github.com/adventurewavelabs) |
+| Turbo Flow | [GitHub: adventurewavelabs/turbo-flow](https://github.com/adventurewavelabs/turbo-flow) |
 | Ruflo | [GitHub: ruvnet/ruflo](https://github.com/ruvnet/ruflo) |
-| Turbo Flow | [GitHub: marcuspat/turbo-flow](https://github.com/marcuspat/turbo-flow) |
 | OpenSpec | [npm: @fission-ai/openspec](https://npmjs.com/package/@fission-ai/openspec) |
 | Agentic QE | [npm: agentic-qe](https://npmjs.com/package/agentic-qe) |
 
 ---
 
+## License
+
+MIT — Copyright (c) 2025-2026 Adventure Wave Labs
+
+---
+
 <div align="center">
 
-**Built for the Claude ecosystem**
+**Built & Presented by Adventure Wave Labs**
 
-*Ruflo v3.5. 215+ MCP tools. 6 plugins. Beads. GitNexus. Worktrees. One command.*
+*Turbo Flow v4.0 — Ruflo v3.5. 215+ MCP tools. 6 plugins. Beads. GitNexus. Worktrees. One command.*
 
 </div>
