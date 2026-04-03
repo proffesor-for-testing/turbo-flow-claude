@@ -11,7 +11,7 @@
 
 **Complete Agentic Development Environment — Ruflo v3.5 + Beads + Worktrees + Agent Teams**
 
-*Built & Presented by [Adventure Wave Labs](https://github.com/adventurewavelabs)*
+*Built & Presented by [Adventure Wave Labs](https://www.adventureonthewave.com/#projects)*
 
 [Quick Start](#-quick-start) • [Installation](#-what-gets-installed) • [Plugins](#-plugins-6) • [Commands](#️-key-commands) • [Migration](#-migrating-from-v3x) • [Resources](#-resources)
 
