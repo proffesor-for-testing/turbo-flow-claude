@@ -1,7 +1,8 @@
 # UITEST.md — Autonomous UI Testing Swarm Context
 
-> **Version:** 1.0.0 · **Stack:** Turbo Flow v4.0 + Ruflo v3.5 + Playwright + Beads + GitNexus
-> **Purpose:** Feed this file to a Claude Code swarm to execute full autonomous UAT against any web application, self-heal failures, and iterate until 100% functionality is verified.
+> **Version:** 2.0.0 · **Stack:** Turbo Flow v4.0 + Ruflo v3.5 + RuVector/SONA + Playwright + Beads + GitNexus + AgentDB v3
+> **Purpose:** Feed this file to a Claude Code swarm to execute full autonomous UAT against any web application, self-heal failures via spawned fix swarms, learn from every test cycle via SONA/RuVector, and iterate until 100% functionality is verified.
+> **Repos:** [turbo-flow](https://github.com/marcuspat/turbo-flow) · [ruflo](https://github.com/ruvnet/ruflo) · [RuVector](https://github.com/ruvnet/RuVector)
 
 ---
 
@@ -33,14 +34,23 @@ npm install axe-core       # Accessibility auditing
 npm install lighthouse      # Performance auditing (optional)
 npm install sharp           # Screenshot diffing
 
-# 4. Create workspace structure
-mkdir -p uitest/{reports,screenshots,fixtures,traces,har,videos}
+# 4. Install RuVector self-learning hooks + AgentDB
+npx @ruvector/cli hooks init
+npx @ruvector/cli hooks install
+npm install ruvector 2>/dev/null  # SONA learning engine for test pattern adaptation
+
+# 5. Create workspace structure
+mkdir -p uitest/{reports/bugs,screenshots,fixtures,traces,har,videos,trajectories}
 mkdir -p uitest/specs/{discovery,forms,auth,navigation,api,a11y,load,regression}
 mkdir -p uitest/fixes
 
-# 5. Initialize Beads for test tracking
+# 6. Initialize Beads for test tracking
 bd init 2>/dev/null
 bd create "UITEST: Full UAT Campaign" -t epic -p 0
+
+# 7. Initialize SONA/AgentDB memory for test patterns
+ruv-remember "uitest-session-start" "$(date -Iseconds)"
+mem-search "uitest" 2>/dev/null  # Recall patterns from prior sessions
 ```
 
 ---
@@ -486,13 +496,73 @@ LOOP:
   MAX ITERATIONS: 10
   If after 10 iterations pass_rate < 0.95:
      - bd create "UITEST: Stalled at {pass_rate*100}% — needs human" -t task -p 0 --flag human
-     - Generate summary report
+     - Generate FINAL bug fix report (Phase 5 format) even though stalled
      - STOP
 
   BETWEEN ITERATIONS:
      - gnx-analyze (update knowledge graph with fixes)
      - neural-patterns (learn from fix patterns)
      - ruv-remember "uitest-iteration-{N}" "{pass_rate}, {bugs_fixed}, {bugs_remaining}"
+     - Generate INTERIM bug fix report:
+       uitest/reports/UITEST-BUGS-INTERIM-{iteration}-{timestamp}.md
+       (same format as final report — this is the crash-safe checkpoint)
+
+  BUG RECORDING FORMAT (used by ALL test agents when logging bugs):
+  Every bug logged to Beads AND to a structured JSON file for report generation:
+
+  bd create "BUG: {title}" -t bug -p {0-3}
+  
+  AND write to uitest/reports/bugs/{bug-id}.json:
+  {
+    "id": "BUG-{N}",
+    "title": "{short title}",
+    "priority": "P{0-3}",
+    "category": "{form|auth|navigation|api|a11y|load|security|state}",
+    "status": "UNFIXED",
+    "found_by": "{agent-name}",
+    "found_at": "{ISO-8601 timestamp}",
+    "url": "{page URL where bug was found}",
+    "description": "{plain English description of what's broken}",
+    "reproduction_steps": [
+      {"action": "navigate", "target": "{url}"},
+      {"action": "fill", "target": "{selector}", "value": "{input}"},
+      {"action": "click", "target": "{selector}"},
+      {"action": "expect", "expected": "{what should happen}", "actual": "{what happened}"}
+    ],
+    "evidence": {
+      "screenshot": "uitest/screenshots/{bug-id}.png",
+      "trace": "uitest/traces/{bug-id}.zip",
+      "har": "uitest/har/{relevant}.har",
+      "console_errors": ["{verbatim error 1}", "{verbatim error 2}"],
+      "network_errors": [{"method": "POST", "url": "/api/users", "status": 500, "body": "{...}"}]
+    },
+    "source_analysis": {
+      "file": "{path/to/file.ext}",
+      "line": "{line or range}",
+      "root_cause": "{technical explanation}",
+      "blast_radius": ["{file1}", "{file2}"]
+    },
+    "fix_instructions": {
+      "file": "{path/to/file.ext}",
+      "before": "{broken code block}",
+      "after": "{fixed code block}",
+      "explanation": "{why this fix works}",
+      "additional_changes": [{"file": "{path}", "change": "{description}"}]
+    },
+    "verification": {
+      "commands": ["{command to verify fix}"],
+      "related_tests": ["{related test areas to re-run}"]
+    },
+    "fix_attempts": [
+      {"attempt": 1, "description": "{what was tried}", "result": "{why it failed}"}
+    ]
+  }
+
+  The qa-lead reads ALL uitest/reports/bugs/*.json files when generating
+  the final and interim reports. This structured format ensures:
+  - Nothing is lost if an agent crashes
+  - Reports can be regenerated from the JSON files at any time
+  - Claude can parse the JSON directly if preferred over markdown
 ```
 
 ---
@@ -540,21 +610,28 @@ REVERSE VERIFICATION PROTOCOL:
 
 ## Phase 5: Reporting
 
-Generate a comprehensive UAT report.
+Generate TWO reports at session end. The first is an executive summary. The second is the actionable bug fix report — this is the one you hand to Claude to fix everything.
+
+### Report 1: Executive Summary
+
+Save to `uitest/reports/UITEST-SUMMARY-{YYYY-MM-DD-HHmmss}.md`
 
 ```
-FINAL REPORT (save to uitest/reports/UITEST-FINAL-REPORT.md):
+# UAT Summary — {App Name}
+# Generated: {YYYY-MM-DD HH:mm:ss UTC}
+# Target: {target_url}
+# Duration: {total_minutes} minutes
+# Swarm: {topology} with {agent_count} agents
 
-# UAT Report — {App Name} — {Date}
-
-## Executive Summary
+## Results
 - Total pages tested: N
 - Total elements exercised: N
 - Total test cases executed: N
 - Pass rate: N%
-- Iterations to reach 100%: N
+- Fix loop iterations: N
 - Defects found: N (P0: X, P1: X, P2: X, P3: X)
-- Defects auto-fixed: N
+- Defects auto-fixed by swarm: N
+- Defects remaining (unfixed): N
 - Defects escalated to human: N
 
 ## Coverage Matrix
@@ -563,19 +640,16 @@ FINAL REPORT (save to uitest/reports/UITEST-FINAL-REPORT.md):
 | /    | ✅    | ✅   | ✅  | ✅  | ✅   | ✅   | PASS   |
 ...
 
-## Defect Log
-| ID | Severity | Description | Status | Fix |
-|----|----------|-------------|--------|-----|
-...
-
 ## Cross-Browser Results
-| Browser | Pass | Fail | Skip |
-|---------|------|------|------|
-...
+| Browser  | Pass | Fail | Skip |
+|----------|------|------|------|
+| Chromium | N    | N    | N    |
+| Firefox  | N    | N    | N    |
+| WebKit   | N    | N    | N    |
 
 ## Accessibility Score
-- Critical violations: 0
-- Serious violations: 0
+- Critical violations: N
+- Serious violations: N
 - WCAG 2.1 AA compliant: YES/NO
 
 ## Performance Baseline
@@ -598,7 +672,247 @@ FINAL REPORT (save to uitest/reports/UITEST-FINAL-REPORT.md):
 - Screenshots: uitest/screenshots/
 - Traces: uitest/traces/
 - Videos: uitest/videos/
+- Bug fix report: uitest/reports/UITEST-BUGS-{timestamp}.md
 ```
+
+---
+
+### Report 2: Bug Fix Report (THE ACTIONABLE ONE)
+
+This is the report you point Claude at. It contains everything needed to reproduce, locate, understand, and fix every remaining bug. No ambiguity — every bug has the file, line, root cause, and exact fix instructions.
+
+Save to `uitest/reports/UITEST-BUGS-{YYYY-MM-DD-HHmmss}.md`
+
+**qa-lead MUST generate this report using the following template for EVERY bug, whether fixed or unfixed:**
+
+```markdown
+# Bug Fix Report — {App Name}
+# Generated: {YYYY-MM-DD HH:mm:ss UTC}
+# Target: {target_url}
+# Total Bugs: {N} | Fixed: {N} | Remaining: {N} | Escalated: {N}
+#
+# HOW TO USE THIS REPORT:
+# Point Claude Code at this file:
+#   "Read uitest/reports/UITEST-BUGS-{timestamp}.md and fix every UNFIXED bug in order of priority."
+# Claude has everything it needs below — file paths, root causes, reproduction steps, and fix instructions.
+
+---
+
+## UNFIXED BUGS (requires action)
+
+### BUG-{ID}: {Short title}
+- **Priority:** P{0-3} ({critical|high|medium|low})
+- **Category:** {form|auth|navigation|api|a11y|load|security|state}
+- **Found by:** {agent-name} agent
+- **Found at:** {YYYY-MM-DD HH:mm:ss UTC}
+- **Status:** UNFIXED
+- **Attempts:** {N} fix attempts made, all failed
+
+#### What's broken
+{Plain English description of the bug. What the user would see. Be specific — not "form doesn't work" but "submitting the signup form with a valid email returns a 500 error and the user sees a blank white page."}
+
+#### Reproduction steps
+1. Navigate to `{url}`
+2. {Action}: `{element description}` (element ref: `{@eN}`, selector: `{css-selector}`)
+3. {Action}: Fill `{field}` with `{value}`
+4. {Action}: Click `{button}`
+5. **Expected:** {what should happen}
+6. **Actual:** {what actually happens}
+
+#### Evidence
+- Screenshot: `uitest/screenshots/{bug-id}-{description}.png`
+- Trace: `uitest/traces/{bug-id}.zip`
+- HAR: `uitest/har/{relevant-capture}.har`
+- Video: `uitest/videos/{bug-id}.webm` (if captured)
+- Console errors: `{paste exact console error messages}`
+- Network: `{method} {url} → {status} {response body summary}`
+
+#### Root cause analysis
+- **Source file:** `{path/to/file.ext}` (from GitNexus blast radius)
+- **Line(s):** `{line range}` (approximate, from stack trace or code analysis)
+- **Root cause:** {Specific technical explanation. e.g., "The signup handler in src/routes/auth.ts line 42 calls userService.create() without awaiting the Promise, so the response sends before the DB write completes. On slow DB connections, this returns 500 because the transaction is still pending when the response tries to read the new user."}
+- **Blast radius:** {List of files/components affected by fixing this}
+  - `{file1.ext}` — {why it's affected}
+  - `{file2.ext}` — {why it's affected}
+
+#### Fix instructions
+```
+WHAT TO CHANGE:
+
+File: {path/to/file.ext}
+Line: {N}
+
+BEFORE (current broken code):
+{paste the exact broken code block, 5-15 lines of context}
+
+AFTER (fixed code):
+{paste the exact fixed code block}
+
+WHY THIS FIX WORKS:
+{1-2 sentences explaining the fix}
+```
+
+#### Additional changes required (if any)
+```
+File: {path/to/other-file.ext}
+Change: {description of secondary change needed}
+Reason: {why this is also needed}
+```
+
+#### Verification
+After applying the fix, verify with:
+```bash
+# 1. Run the specific failing test
+{exact command to reproduce and verify the fix}
+
+# 2. Run related tests (blast radius)
+{commands for related test areas}
+
+# 3. Run aqe-gate
+aqe-gate
+```
+
+#### Previous fix attempts (if any)
+| Attempt | What was tried | Why it failed |
+|---------|---------------|---------------|
+| 1       | {description} | {reason}      |
+| 2       | {description} | {reason}      |
+
+---
+
+### BUG-{ID}: {next bug...}
+{same template repeated for every unfixed bug}
+
+---
+
+## FIXED BUGS (for reference — no action needed)
+
+### BUG-{ID}: {Short title} ✅ FIXED
+- **Priority:** P{0-3}
+- **Category:** {category}
+- **Fixed by:** {agent-name} in iteration {N}
+- **Fix:** {one-line summary of what was changed}
+- **File(s) changed:** `{path1}`, `{path2}`
+- **Commit:** `{commit hash}` — `{commit message}`
+- **Verified:** {test name} passes, regression suite passes
+
+---
+
+## ESCALATED BUGS (requires human decision)
+
+### BUG-{ID}: {Short title} ⚠️ ESCALATED
+- **Priority:** P{0-3}
+- **Category:** {category}
+- **Reason for escalation:** {why the swarm couldn't fix this — ambiguous requirements, needs architectural decision, needs access to external service, etc.}
+- **What the swarm tried:** {summary of failed fix attempts}
+- **Recommendation:** {what the swarm thinks should be done}
+- **Evidence:** {same evidence block as unfixed bugs}
+
+---
+
+## BUG STATISTICS
+
+### By Category
+| Category   | Found | Fixed | Remaining | Escalated |
+|------------|-------|-------|-----------|-----------|
+| Form       | N     | N     | N         | N         |
+| Auth       | N     | N     | N         | N         |
+| Navigation | N     | N     | N         | N         |
+| API        | N     | N     | N         | N         |
+| A11y       | N     | N     | N         | N         |
+| Load       | N     | N     | N         | N         |
+| Security   | N     | N     | N         | N         |
+| State      | N     | N     | N         | N         |
+
+### By Priority
+| Priority | Found | Fixed | Remaining | Escalated |
+|----------|-------|-------|-----------|-----------|
+| P0       | N     | N     | N         | N         |
+| P1       | N     | N     | N         | N         |
+| P2       | N     | N     | N         | N         |
+| P3       | N     | N     | N         | N         |
+
+### Fix Loop History
+| Iteration | Bugs at start | Fixed this round | Pass rate | Duration |
+|-----------|--------------|-----------------|-----------|----------|
+| 1         | N            | N               | N%        | Nm       |
+| 2         | N            | N               | N%        | Nm       |
+| ...       |              |                 |           |          |
+
+### Patterns Learned
+{List the test patterns stored in AgentDB during this session that would help future runs}
+- `{pattern-key}`: {pattern-value}
+- `{pattern-key}`: {pattern-value}
+```
+
+---
+
+### Bug Report Generation Rules
+
+The qa-lead MUST follow these rules when generating the bug fix report:
+
+```
+1. EVERY unfixed bug MUST have:
+   - Exact source file path (use GitNexus: gitnexus_impact)
+   - Approximate line number (from stack trace, error message, or code search)
+   - Root cause explanation (not just "it's broken" — WHY it's broken)
+   - Before/after code blocks showing the fix (if the swarm can determine it)
+   - If the swarm cannot determine the exact fix, provide the root cause,
+     the relevant code block, and a recommended approach
+
+2. EVERY bug MUST have reproduction steps that work if followed literally:
+   - Exact URLs, not relative descriptions
+   - Exact element selectors or refs
+   - Exact input values used
+   - Exact expected vs actual behavior
+
+3. Evidence MUST be concrete:
+   - Screenshot path must exist and show the failure
+   - Trace file must be saved and referenced
+   - Console errors must be copy-pasted verbatim, not summarized
+   - Network errors must include method, URL, status code, and response body
+
+4. The BEFORE/AFTER code blocks in fix instructions MUST:
+   - Include enough context lines (5-15) to locate the change unambiguously
+   - Be copy-pasteable — no pseudocode, no "..." elisions in critical areas
+   - If the fix spans multiple files, list each file separately
+
+5. SORT order:
+   - UNFIXED bugs first (this is what needs action)
+   - Within unfixed: P0 first, then P1, P2, P3
+   - FIXED bugs second (reference only)
+   - ESCALATED bugs third
+
+6. TIMESTAMP everything:
+   - Report generation time in header
+   - Each bug's discovery time
+   - Each fix attempt time
+   - Total session duration
+
+7. The report MUST be self-contained:
+   - A developer (or Claude) reading ONLY this file should be able to
+     fix every bug without asking any questions
+   - No references to "see the conversation" or "as discussed"
+   - Every piece of context is IN the report
+```
+
+---
+
+### Intermediate Bug Reports (During Session)
+
+Don't wait until the end. The qa-lead generates intermediate reports after EACH fix loop iteration:
+
+```bash
+# After each iteration, write an intermediate report
+# Save to: uitest/reports/UITEST-BUGS-INTERIM-{iteration}-{timestamp}.md
+# Same format as the final report but marked as INTERIM
+# This way, if the session crashes or times out, you still have a report
+
+# The final report supersedes all interim reports
+# Interim reports are kept for audit trail
+```
+
+The intermediate reports also serve as checkpoints. If the swarm is stopped mid-session (cost guardrail, timeout, or human intervention), the most recent interim report is the handoff document.
 
 ---
 
@@ -644,12 +958,13 @@ gitnexus_detect_changes { branch: "fix-bug-123" }
 
 ## MCP Browser Tools Reference
 
-The Ruflo browser MCP provides 59 tools. Key ones for UI testing:
+Ruflo provides 59 browser automation MCP tools plus 313+ total MCP tools across all categories. Key ones for UI testing:
 
 ```
+# Core Navigation
 mcp__ruflo__browser_open { url }              # Open URL
-mcp__ruflo__browser_snapshot { interactive }   # DOM snapshot with element refs
-mcp__ruflo__browser_click { target }           # Click element by ref (@e1, @e2...)
+mcp__ruflo__browser_snapshot { interactive }   # DOM snapshot with element refs (@e1, @e2...)
+mcp__ruflo__browser_click { target }           # Click element by ref
 mcp__ruflo__browser_fill { target, value }     # Fill input field
 mcp__ruflo__browser_select { target, value }   # Select dropdown option
 mcp__ruflo__browser_hover { target }           # Hover over element
@@ -658,6 +973,36 @@ mcp__ruflo__browser_screenshot { path }        # Take screenshot
 mcp__ruflo__browser_wait { selector, timeout } # Wait for element
 mcp__ruflo__browser_evaluate { script }        # Execute JS in page
 mcp__ruflo__browser_network_log {}             # Get captured network requests
+
+# Swarm Coordination
+mcp__ruflo__swarm_init { topology, maxAgents } # Initialize swarm
+mcp__ruflo__agent_spawn { type, name, capabilities } # Spawn agent
+mcp__ruflo__task_orchestrate { task, strategy, priority } # Orchestrate workflow
+
+# Memory
+mcp__ruflo__memory_store { key, value, namespace } # Store pattern
+mcp__ruflo__memory_search { query, limit }         # Semantic search
+
+# Neural/Intelligence
+mcp__ruflo__neural_train { pattern_type }          # Train patterns
+mcp__ruflo__hooks_route { task }                   # Route to optimal agent
+
+# Teammate (fix swarm coordination)
+mcp__ruflo__teammate_spawn { role, task, context }  # Spawn fix agent
+mcp__ruflo__teammate_handoff { from, to, context }  # Hand off between agents
+
+# Gastown (WASM orchestration)
+mcp__ruflo__gastown_convoy_create { name, tests }   # Group tests
+mcp__ruflo__gastown_beads_sync {}                   # Sync beads across worktrees
+```
+
+Element refs (@e1, @e2...) are generated from accessibility tree snapshots and map to interactive elements. This is far more compact and reliable than CSS selectors:
+```
+# Traditional (fragile):
+await page.click('body > div.container > form#login > button[type="submit"].btn.btn-primary');
+
+# With element refs (compact, stable):
+mcp__ruflo__browser_click { target: "@e3" }
 ```
 
 When the MCP browser tools are insufficient or unavailable, fall back to Playwright directly:
@@ -682,6 +1027,385 @@ await page.waitForURL('**/dashboard');
 
 // Save trace on failure
 await context.tracing.stop({ path: 'uitest/traces/test-name.zip' });
+```
+
+---
+
+## Trajectory Learning (Ruflo @claude-flow/browser)
+
+Every browser interaction is recorded as a trajectory — a replayable sequence of actions that the swarm can learn from. This is powered by Ruflo's `@claude-flow/browser` module.
+
+```
+When any agent performs a browser interaction sequence:
+
+1. START a trajectory before each test flow:
+   const id = browser.startTrajectory('login-happy-path');
+
+2. All actions (open, click, fill, select, hover, scroll) are auto-recorded with:
+   - Element ref (@e1, @e2...) from accessibility tree snapshots
+   - Timestamp, URL, DOM state hash
+   - Network requests triggered
+   - Result (success/failure/timeout)
+
+3. On SUCCESS, save the trajectory:
+   browser.saveTrajectory(id, { outcome: 'pass', tags: ['auth', 'login'] });
+   ruv-remember "trajectory-login-happy" "{action sequence summary}"
+
+4. On FAILURE, save with failure context:
+   browser.saveTrajectory(id, { outcome: 'fail', error: errorMsg });
+   — The trajectory becomes input for the fix swarm
+
+5. REPLAY trajectories for regression testing:
+   browser.replayTrajectory(savedId);
+   — Replays the exact action sequence on the current DOM
+   — Detects regressions when a previously-passing trajectory fails
+
+6. Store trajectories as files:
+   Save to: uitest/trajectories/{test-name}-{timestamp}.json
+```
+
+Trajectories are the foundation of the self-learning loop. The SONA engine uses them to build a model of which interaction patterns succeed and which fail, so subsequent test iterations are smarter.
+
+---
+
+## Browser Swarm Coordination (Ruflo)
+
+For load testing and multi-user scenarios, use Ruflo's browser swarm coordinator instead of spawning individual Playwright instances:
+
+```javascript
+import { createBrowserSwarm } from '@claude-flow/browser';
+
+// Create a swarm of browser sessions coordinated by Ruflo
+const swarm = createBrowserSwarm({
+  topology: 'hierarchical',   // qa-lead at top, test agents below
+  maxSessions: 8,             // 8 concurrent browser sessions
+  sessionPrefix: 'uitest',
+});
+
+// Spawn typed browser agents
+const crawler = await swarm.spawnAgent('navigator');
+const formBot1 = await swarm.spawnAgent('scraper');  // form tester
+const formBot2 = await swarm.spawnAgent('scraper');  // parallel form tester
+const authBot = await swarm.spawnAgent('validator');  // auth tester
+
+// Share discovery data between agents
+swarm.shareData('sitemap', sitemapJson);
+swarm.shareData('testUsers', createdUsers);
+
+// Each agent reads shared data
+const sitemap = swarm.getSharedData('sitemap');
+
+// Monitor swarm health
+const stats = swarm.getStats();
+// { activeSessions: 4, maxSessions: 8, topology: 'hierarchical' }
+
+// Graceful shutdown
+await swarm.closeAll();
+```
+
+This is preferred over raw Playwright for multi-user tests because it provides:
+- Shared memory between browser agents via AgentDB
+- Automatic session cleanup on agent failure
+- Topology-aware coordination (agents report up to qa-lead)
+- Built-in rate limiting to avoid overwhelming the target app
+
+---
+
+## SONA Self-Learning Engine (RuVector)
+
+SONA (Self-Optimizing Neural Architecture) is the intelligence layer that makes each test iteration smarter than the last. It is bundled in Ruflo via RuVector WASM acceleration.
+
+```
+HOW SONA IMPROVES TESTING:
+
+1. PATTERN RECOGNITION:
+   After each test cycle, SONA analyzes results and identifies patterns:
+   - "Forms with date pickers fail 80% of the time on Firefox"
+   - "API calls after rapid form submission return 429 status"
+   - "Navigation from /settings to /profile triggers console error"
+
+   These are stored as learned patterns in AgentDB:
+   ruv-remember "pattern-datepicker-firefox" "DatePicker XSS fails on Firefox — use fill() not type()"
+   ruv-remember "pattern-rapid-submit-429" "Rate limit hit after 3 submissions in 500ms — add 200ms delay"
+
+2. ADAPTIVE TEST ORDERING:
+   SONA routes subsequent test iterations to prioritize:
+   - Tests that previously failed (regression check)
+   - Tests adjacent to fixed code (blast radius)
+   - Tests in areas with high defect density (hot spots)
+
+   This uses hooks-route internally:
+   hooks-route --task "test form validation on /signup"
+   → Routes to optimal agent type + test ordering
+
+3. MICRO-LORA ADAPTATION (<1ms):
+   For each test interaction, SONA applies MicroLoRA weight adjustments:
+   - If a click pattern succeeded: reinforce the element selection strategy
+   - If a fill pattern failed: adapt input generation for that field type
+   - These adaptations persist across sessions via EWC++ (prevents forgetting)
+
+4. THREE-SPEED LEARNING:
+   | Speed    | Mechanism           | What It Does                                     | Latency |
+   |----------|--------------------|-------------------------------------------------|---------|
+   | Instant  | MicroLoRA          | Adapts test strategy for this specific element   | <1ms    |
+   | Session  | GNN attention      | Reinforces successful test paths during session  | ~10ms   |
+   | Long-term| EWC++ consolidation| Permanently learns which test patterns work      | ~100ms  |
+
+5. CROSS-SESSION MEMORY:
+   When the swarm restarts (new iteration or new day), it recalls:
+   - All previously discovered bugs and their fix patterns
+   - Which test orderings were most efficient
+   - Which element selectors were most stable (avoids flaky selectors)
+   - Known timing-sensitive areas requiring explicit waits
+
+   mem-search "uitest"        # Recall all test patterns
+   ruv-recall "pattern-*"     # Recall specific learned patterns
+   bd ready --json            # Recall all open/closed test issues
+```
+
+---
+
+## Hive-Mind Mode (Advanced Multi-Consensus)
+
+For complex applications (50+ pages, multiple bounded contexts), upgrade from star topology to hive-mind for intelligent consensus-driven testing:
+
+```bash
+# Instead of rf-star, use hive-mind for large-scale UAT
+npx ruflo@latest hive-mind spawn "Full UAT campaign for {APP_URL}"
+
+# The hive-mind provides:
+# - Queen agent (replaces qa-lead) with Byzantine fault-tolerant consensus
+# - Dynamic agent spawning based on discovered complexity
+# - Automatic work distribution using semantic routing
+# - 5 consensus protocols: Raft, Gossip, CRDT, Paxos, BFT
+```
+
+Use hive-mind when:
+- Target app has >50 distinct pages
+- Multiple user roles with complex RBAC
+- Real-time features (websockets, SSE, polling)
+- Multi-tenant architecture requiring isolated test runs
+
+The hive-mind queen uses SONA routing to decide how many agents to spawn per area based on the crawler's complexity assessment of each page.
+
+---
+
+## Coherence Gate (RuVector Prime Radiant)
+
+Before accepting any fix as "correct," run it through the coherence gate to verify mathematical consistency — not just "tests pass" but "the fix is logically coherent with the rest of the codebase."
+
+```
+COHERENCE GATE PROTOCOL (runs inside qa-lead after each fix):
+
+1. After a fix swarm commits its changes, compute coherence:
+   - The Prime Radiant sheaf Laplacian measures:
+     E(S) = Σ wₑ · ‖ρᵤ(xᵤ) - ρᵥ(xᵥ)‖²
+   - If energy E(S) < 0.1: fix is coherent → accept
+   - If E(S) 0.1-0.4: fix needs more evidence → run additional tests
+   - If E(S) 0.4-0.7: fix is suspicious → deep analysis with Opus
+   - If E(S) > 0.7: fix is incoherent → reject and escalate to human
+
+2. COMPUTE LADDER ROUTING for fix verification:
+   | Energy  | Lane     | Action                                    |
+   |---------|----------|-------------------------------------------|
+   | < 0.1   | Reflex   | Auto-approve, merge immediately            |
+   | 0.1-0.4 | Retrieval| Run 3 more related tests before approving  |
+   | 0.4-0.7 | Heavy    | Full aqe-gate + blast radius re-analysis   |
+   | > 0.7   | Human    | Escalate — fix may introduce new bugs      |
+
+3. WITNESS CHAIN:
+   Every fix approval is recorded in a tamper-evident hash-linked chain:
+   - Fix ID, coherence score, test results hash, approver (agent or human)
+   - Stored in: uitest/reports/witness-chain.jsonl
+   - This provides a cryptographic audit trail of every change made during UAT
+
+4. INTEGRATION:
+   The coherence gate runs automatically as part of the fix loop.
+   qa-lead checks coherence BEFORE running regression tests.
+   If coherence is low, it skips expensive regression and goes straight to rejection.
+```
+
+This prevents the common failure mode where a "fix" for one bug introduces subtle breakage elsewhere that only surfaces later. The coherence gate catches logical inconsistencies mathematically, before they manifest as test failures.
+
+---
+
+## AgentDB v3 Memory Architecture
+
+All test knowledge flows through the three-tier memory system. This is how the swarm remembers across iterations and sessions:
+
+```
+TIER 1 — BEADS (Project-level, git-native JSONL):
+  bd create "BUG: Login form XSS on email field" -t bug -p 1
+  bd close "BUG-42" --reason "Fixed: sanitized input with DOMPurify"
+  bd remember "uitest-config" "{target: localhost:3000, browsers: 3}"
+  → Persists across sessions, tracked in git, auditable
+
+TIER 2 — NATIVE TASKS (Session-level, automatic):
+  → Claude Code automatically tracks active tasks within the session
+  → No explicit commands needed — just describe what you're doing
+  → Lost when session ends (which is why Beads captures important state)
+
+TIER 3 — AGENTDB + RUVECTOR (Learned patterns, HNSW-indexed):
+  ruv-remember "selector-stability-/login" "Use [data-testid] over CSS class selectors"
+  ruv-remember "timing-/api/users" "Endpoint needs 800ms timeout, not default 3000ms"
+  ruv-remember "fix-pattern-xss" "Always use DOMPurify.sanitize() for user input rendering"
+  
+  ruv-recall "selector stability"    # Semantic search — finds related patterns
+  mem-search "timing"                # Search across all memory tiers
+  mem-stats                          # Memory health check
+
+  → Indexed by RuVector's HNSW with GNN self-learning
+  → Semantic search finds related patterns even with different wording
+  → Patterns improve with usage (GNN re-ranks based on access frequency)
+  → 150x faster retrieval than flat search via WASM acceleration
+
+MEMORY RULES FOR TEST AGENTS:
+  - Bugs/tasks/status → ALWAYS use Beads (bd create, bd close)
+  - Test patterns/selectors/timings → ALWAYS use AgentDB (ruv-remember)
+  - Session scratchpad → use Native Tasks (automatic)
+  - NEVER use markdown TODO files or MEMORY.md — use bd/ruv only
+```
+
+---
+
+## Teammate Plugin Integration
+
+The Teammate Plugin (21 MCP tools) bridges Anthropic's native Agent Teams with Ruflo swarms. This is critical for the fix loop:
+
+```
+When qa-lead needs to spawn a fix swarm:
+
+1. Use Teammate to spawn a sub-team within the running swarm:
+   mcp__ruflo__teammate_spawn {
+     role: "fixer",
+     task: "Fix BUG-42: XSS in login form email field",
+     context: { bugId: "BUG-42", trace: "uitest/traces/login-xss.zip" }
+   }
+
+2. The Teammate plugin provides:
+   - Semantic routing: routes fix tasks to the right agent type
+   - Rate limiting: prevents fix swarm from consuming all resources
+   - Circuit breaker: if a fix agent crashes 3 times, it stops trying
+   - BMSSP WASM acceleration: 352x faster for simple code transforms
+
+3. For coordinating between test and fix agents:
+   mcp__ruflo__teammate_handoff {
+     from: "form-tester",
+     to: "fixer-42",
+     context: "Bug report with reproduction steps"
+   }
+
+4. Monitor fix team status:
+   mcp__ruflo__teammate_status {}
+   → Returns: active fixers, completion rates, circuit breaker state
+```
+
+---
+
+## Gastown Bridge (WASM Orchestration)
+
+The Gastown Bridge plugin (20 MCP tools) provides WASM-accelerated orchestration for high-throughput test coordination:
+
+```
+Key Gastown capabilities for UITEST:
+
+1. CONVOY MANAGEMENT:
+   Group related tests into convoys for batch execution:
+   mcp__ruflo__gastown_convoy_create {
+     name: "auth-suite",
+     tests: ["login", "signup", "reset", "session", "rbac"]
+   }
+   → Convoys execute as a unit — if one fails, the convoy reports collectively
+
+2. BEADS SYNC:
+   Automatically syncs test results from agent worktrees back to main:
+   mcp__ruflo__gastown_beads_sync {}
+   → Prevents merge conflicts in beads data across parallel agents
+
+3. WASM ACCELERATION (352x):
+   For simple test assertions and string matching, Gastown's Agent Booster
+   bypasses the LLM entirely:
+   - Element text verification: WASM regex, not LLM reasoning
+   - Status code checks: WASM comparison, not LLM analysis
+   - Screenshot diff: WASM pixel comparison via sharp
+   → Saves tokens and cost on high-volume, simple verifications
+
+4. GRAPH ANALYSIS:
+   Gastown provides test dependency graph analysis:
+   mcp__ruflo__gastown_graph_analyze {
+     type: "test-dependencies"
+   }
+   → Shows which tests depend on which, enabling smart parallelization
+   → Tests with no dependencies run first; dependent tests wait
+```
+
+---
+
+## Agentic QE Plugin Integration
+
+The Agentic QE plugin provides 58 specialized QE agents and 16 MCP tools. Use it for quality gates throughout the UAT cycle:
+
+```
+QUALITY GATES:
+
+1. AFTER DISCOVERY (Phase 1):
+   aqe-generate          # Generate test specs from discovered sitemap
+   → Creates test templates in uitest/specs/ based on element inventory
+
+2. AFTER EACH FIX (Phase 3):
+   aqe-gate              # Full quality gate — GO/NO-GO decision
+   → Runs: unit tests, integration tests, coverage check, security scan
+   → Returns: GO (merge the fix) or NO-GO (reject + details)
+
+3. BEFORE REVERSE VERIFICATION (Phase 4):
+   aqe-generate          # Generate regression tests for all fixed bugs
+   → Each bug fix gets an explicit regression test
+
+4. CHAOS ENGINEERING (optional, Phase 2):
+   The Agentic QE plugin includes chaos agents:
+   - Kill a backend service mid-test → verify graceful degradation
+   - Throttle network to 2G → verify timeout handling
+   - Fill disk space → verify error messages
+   - Corrupt session cookie → verify auth recovery
+
+5. SECURITY SCANNING:
+   Agentic QE includes security-specific agents:
+   - OWASP Top 10 automated checks
+   - Dependency vulnerability scan (npm audit / cargo audit)
+   - Secret detection in page source and network responses
+   - CSP header validation
+```
+
+---
+
+## Neural Intelligence Integration
+
+Use Ruflo's hooks and neural systems to make the test swarm learn from its own execution:
+
+```bash
+# BEFORE testing: pretrain on the target app's codebase
+hooks-train                # Deep pretrain — learns code patterns, component structure
+neural-train               # Train neural coordination patterns
+
+# DURING testing: route tasks to optimal agents
+hooks-route --task "test complex multi-step form wizard"
+→ Routes to: form-tester agent + Sonnet model (moderate complexity)
+
+hooks-route --task "test OAuth PKCE flow with token refresh"
+→ Routes to: auth-tester agent + Opus model (high complexity security)
+
+hooks-route --task "verify 404 page renders correctly"
+→ Routes to: nav-tester agent + Haiku model (simple verification)
+
+# AFTER testing: capture what was learned
+neural-patterns            # View all patterns learned during this session
+ruv-remember "neural-uitest-session-{N}" "$(neural-patterns --json)"
+
+# The neural system learns:
+# - Which agent types are most effective for which test categories
+# - Optimal model routing (when to use Opus vs Sonnet vs Haiku)
+# - Which test orderings find bugs fastest
+# - Common fix patterns for recurring bug types
 ```
 
 ---
@@ -733,13 +1457,19 @@ Feed this entire file as context, then issue:
 Read UITEST.md. Target URL is {YOUR_APP_URL}.
 Initialize the testing swarm, run Phase 1 through Phase 5.
 Fix every defect you find. Loop until 100% or max iterations.
-Generate the final report.
+Generate BOTH reports: the executive summary AND the bug fix report.
 ```
 
 Or the one-liner:
 
 ```
 UITEST target={YOUR_APP_URL} — full autonomous UAT, self-heal, loop to 100%.
+```
+
+**After the session completes, to fix remaining bugs:**
+
+```
+Read uitest/reports/UITEST-BUGS-{latest-timestamp}.md and fix every UNFIXED bug in priority order. Start with P0, then P1, then P2, then P3. For each bug, follow the fix instructions exactly, then run the verification commands. Commit each fix separately.
 ```
 
 ---
@@ -775,377 +1505,44 @@ Guardrail: **$15/hr max**. If cost exceeds this, qa-lead pauses non-critical age
 ## Session End Protocol
 
 ```bash
-# 1. Close all open test bugs with status
+# 1. Generate the final bug fix report (MOST IMPORTANT OUTPUT)
+TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)
+# qa-lead generates: uitest/reports/UITEST-BUGS-${TIMESTAMP}.md
+# qa-lead generates: uitest/reports/UITEST-SUMMARY-${TIMESTAMP}.md
+# Follow the Phase 5 report templates exactly — this is the handoff document
+
+# 2. Close all open test bugs with status
 bd list --json | jq '.[] | select(.status=="open")'
 # For each: bd close or bd update with final status
 
-# 2. Push all data
+# 3. Capture learned patterns from this session
+neural-patterns > uitest/reports/learned-patterns-${TIMESTAMP}.json
+ruv-remember "uitest-session-end-${TIMESTAMP}" "pass_rate={pass_rate}, bugs_found={N}, bugs_fixed={M}"
+ruv-remember "uitest-selectors-stable" "$(cat uitest/fixtures/stable-selectors.json 2>/dev/null)"
+
+# 4. Push all data
 bd dolt push
 git add -A
-git commit -m "uitest: campaign results — {pass_rate}% pass rate"
+git commit -m "uitest: ${TIMESTAMP} — ${pass_rate}% pass rate, ${bugs_found} bugs found, ${bugs_fixed} fixed, ${bugs_remaining} remaining"
 git push
 
-# 3. Update knowledge graph
+# 5. Update knowledge graph
 gnx-analyze
 neural-patterns
 
-# 4. Final status
+# 6. Final status
 turbo-status
-echo "UITEST COMPLETE: {pass_rate}% — report at uitest/reports/UITEST-FINAL-REPORT.md"
+echo ""
+echo "=============================================="
+echo "  UITEST COMPLETE — ${TIMESTAMP}"
+echo "  Pass rate: ${pass_rate}%"
+echo "  Bugs found: ${bugs_found} | Fixed: ${bugs_fixed} | Remaining: ${bugs_remaining}"
+echo ""
+echo "  REPORTS:"
+echo "  Summary:  uitest/reports/UITEST-SUMMARY-${TIMESTAMP}.md"
+echo "  Bug fixes: uitest/reports/UITEST-BUGS-${TIMESTAMP}.md"
+echo ""
+echo "  TO FIX REMAINING BUGS, TELL CLAUDE:"
+echo "  'Read uitest/reports/UITEST-BUGS-${TIMESTAMP}.md and fix every UNFIXED bug.'"
+echo "=============================================="
 ```
-
-# UITEST Addendum v1.1.0
-> Attach to UITEST.md v1.0.0 · Additions: RuVector memory, RVF audit, coherence gating, spec gap fixes
-
----
-
-## A1. RuVector / AgentDB — Semantic Test Memory
-
-The base spec uses `ruv-remember` for flat key-value storage. Replacing this with RuVector's
-GNN-backed HNSW memory lets the swarm perform semantic queries against past failures — e.g.
-"find failures structurally similar to this new one" — and accumulate learning across campaigns,
-not just within a single run.
-
-### Bootstrap addition (insert after step 3 in Environment Bootstrap)
-
-```bash
-# Install RuVector semantic memory stack
-npx @ruvector/cli hooks init
-npx @ruvector/cli hooks install   # wires into Claude Code session
-npm install agentdb@alpha
-npm install ruvector
-```
-
-### Agent memory usage
-
-Replace all `ruv-remember` calls with AgentDB writes:
-
-```javascript
-const { AgentDB } = require('agentdb');
-const db = new AgentDB({ dimensions: 384, persist: true, path: 'uitest/.agentdb' });
-
-// Store a failure signature as a vector
-await db.store({
-  id: `failure-${bugId}`,
-  embedding: await embed(bugDescription),   // use local ONNX model
-  metadata: { form, field, testType, url, iteration }
-});
-
-// On each new failure, query for similar past failures before filing a new bug
-const similar = await db.search(await embed(newFailureDescription), { k: 5 });
-if (similar[0]?.score > 0.92) {
-  // Likely a duplicate or variant — link rather than create new Bead
-  bd update ${similar[0].metadata.bugId} --note "Recurrence: ${newFailureDescription}"
-} else {
-  bd create "BUG: ..." -t bug -p N
-}
-```
-
-### Cross-campaign learning
-
-AgentDB persists across sessions. On swarm init, query for known failure patterns on the
-target URL before Phase 1 even begins:
-
-```javascript
-const knownPatterns = await db.search(await embed(TARGET_URL), {
-  k: 20,
-  filter: { url: TARGET_URL }
-});
-// Pass to qa-lead as pre-seeded risk areas — prioritize those pages in Phase 2
-ruv-remember "preseeded-risks" JSON.stringify(knownPatterns.map(p => p.metadata))
-```
-
----
-
-## A2. RVF Cognitive Containers — Per-Agent Audit Trails
-
-The base spec records test *results* but has no tamper-proof record of the testing *actions*
-themselves. Packaging each agent's session as an RVF cognitive container gives you a
-cryptographically witnessed, hash-chained audit trail of every browser action — useful for
-compliance, client reporting, or debugging disputed results.
-
-### Install
-
-```bash
-cargo install rvf-cli
-npm install @ruvector/rvf
-```
-
-### Per-agent RVF session (add to each agent's teardown)
-
-```bash
-# At the end of each agent's work, seal its session into an RVF artifact
-rvf-cli seal \
-  --input uitest/reports/${AGENT_NAME}.json \
-  --traces uitest/traces/${AGENT_NAME}/ \
-  --screenshots uitest/screenshots/ \
-  --output uitest/artifacts/${AGENT_NAME}.rvf \
-  --sign ed25519 \
-  --witness-chain enabled
-
-# Verify integrity at any future point
-rvf-cli verify uitest/artifacts/${AGENT_NAME}.rvf
-```
-
-Each `.rvf` file contains: the agent's full action log, all screenshots, all traces, a
-hash-linked witness chain of every write, and an Ed25519 signature. The final report can
-reference artifact hashes as evidence anchors.
-
-### Add to Phase 5 report template
-
-```markdown
-## Artifact Integrity
-
-| Agent | RVF File | Witness Chain | Signature |
-|-------|----------|---------------|-----------|
-| crawler | uitest/artifacts/crawler.rvf | ✅ verified | ed25519:abc123... |
-| form-tester | uitest/artifacts/form-tester.rvf | ✅ verified | ed25519:def456... |
-...
-```
-
----
-
-## A3. Prime Radiant Coherence Gate — Fix Validation
-
-The base spec uses `aqe-gate` as the sole merge gate for fix swarms. Adding a Prime Radiant
-coherence check catches fixes that pass the test mechanically but introduce semantic drift —
-e.g. a validation bypass that makes the form test green but is logically incorrect.
-
-### Install
-
-```bash
-cargo add prime-radiant --features simd
-```
-
-### Add to FIX SWARM INSTRUCTIONS (after step 5, before commit)
-
-```bash
-# Run coherence check on the affected module before committing
-coherence_score=$(prime-radiant check \
-  --files "$(gitnexus_impact --files src/components/TargetComponent.tsx --json | jq -r '.affected[]')" \
-  --baseline main \
-  --branch "fix-${BUG_ID}" \
-  --output json | jq '.energy')
-
-# Coherence ladder:
-#   < 0.1  → safe to merge automatically
-#   0.1–0.4 → flag for qa-lead review, proceed with note
-#   0.4–0.7 → block merge, escalate to human
-#   > 0.7  → revert, file as "fix-induced drift"
-
-if (( $(echo "$coherence_score > 0.4" | bc -l) )); then
-  echo "COHERENCE BLOCK: score=$coherence_score — escalating to human"
-  bd human ${BUG_ID} --note "Fix candidate blocked by coherence gate (score: $coherence_score)"
-  git checkout -- .
-else
-  git add -A && git commit -m "fix: ${BUG_ID} — coherence score ${coherence_score}"
-fi
-```
-
-### Add coherence scores to final report
-
-```markdown
-## Fix Coherence Scores
-
-| Bug ID | Fix Description | Coherence Score | Gate Result |
-|--------|-----------------|-----------------|-------------|
-| BUG-001 | Null check on submit handler | 0.03 | ✅ auto-merged |
-| BUG-007 | Auth redirect bypass fix | 0.38 | ⚠️ merged with note |
-| BUG-012 | Form validation skip | 0.71 | 🚫 reverted, escalated |
-```
-
----
-
-## A4. API Endpoint Fuzzing (api-verifier gap)
-
-The base api-verifier does passive capture and targeted reverse calls, but does not fuzz
-endpoint parameters. Add this pass after the reverse verification block:
-
-```javascript
-// Lightweight param fuzzing on each discovered endpoint
-const FUZZ_PAYLOADS = {
-  string: ['', ' ', '\x00', '<script>x</script>', "' OR 1=1--", '${7*7}', 'a'.repeat(10000)],
-  number: [0, -1, 2147483647, -2147483648, 0.1, NaN, Infinity, ''],
-  id:     ['0', '-1', '999999999', '../../../etc/passwd', 'null', 'undefined']
-};
-
-for (const endpoint of discoveredEndpoints) {
-  for (const [param, type] of Object.entries(endpoint.params)) {
-    for (const payload of FUZZ_PAYLOADS[type] ?? FUZZ_PAYLOADS.string) {
-      const res = await apiCall(endpoint, { ...defaultParams, [param]: payload });
-      if (res.status === 500) {
-        bd create `API FUZZ: ${endpoint.method} ${endpoint.path} — 500 on param '${param}' with payload '${payload}'` -t bug -p 1
-      }
-      // Flag any 200 response to an obvious injection payload
-      if (res.status === 200 && String(payload).includes("' OR 1=1")) {
-        bd create `SECURITY: Possible SQLi on ${endpoint.path} param '${param}'` -t bug -p 0
-      }
-    }
-  }
-}
-```
-
----
-
-## A5. Memory Leak Detection Fix (load-tester gap)
-
-`performance.memory` is Chromium-only and unreliable. Replace with Playwright's native
-`page.metrics()` for cross-browser heap tracking:
-
-```javascript
-// Replace the memory monitoring block in load-tester with:
-async function trackMemoryLeak(page, durationMs = 300000, intervalMs = 30000) {
-  const samples = [];
-  const start = Date.now();
-
-  while (Date.now() - start < durationMs) {
-    await page.waitForTimeout(intervalMs);
-    const metrics = await page.metrics();
-    samples.push({
-      timestamp: Date.now() - start,
-      jsHeapUsedMB: metrics.JSHeapUsedSize / 1024 / 1024,
-      domNodes: metrics.Nodes,
-      eventListeners: metrics.JSEventListeners
-    });
-
-    // Interact to keep session alive
-    await page.mouse.move(100, 100);
-  }
-
-  // Simple linear regression to detect upward trend
-  const heapValues = samples.map(s => s.jsHeapUsedMB);
-  const trend = (heapValues.at(-1) - heapValues[0]) / heapValues[0];
-
-  if (trend > 0.2) {   // >20% heap growth over session
-    bd create `MEMORY LEAK: JS heap grew ${(trend*100).toFixed(1)}% over ${durationMs/60000}min session` -t bug -p 1
-  }
-  if (samples.at(-1).domNodes > samples[0].domNodes * 1.3) {
-    bd create `DOM LEAK: Node count grew ${samples.at(-1).domNodes - samples[0].domNodes} over session` -t bug -p 2
-  }
-
-  return samples;
-}
-```
-
----
-
-## A6. Cost Guardrail Implementation (config gap)
-
-The `cost_guardrail_per_hour` config key exists but is never enforced. Add this to the
-qa-lead loop, evaluated at the top of each iteration:
-
-```javascript
-// Add to qa-lead loop — check at start of each iteration
-const COST_CONFIG = {
-  haiku:  { input: 0.80,  output: 4.00  },   // per 1M tokens
-  sonnet: { input: 3.00,  output: 15.00 },
-  opus:   { input: 15.00, output: 75.00 }
-};
-
-function estimatedHourlyCost(tokenCounts, agentModelMap) {
-  let total = 0;
-  for (const [agent, counts] of Object.entries(tokenCounts)) {
-    const model = agentModelMap[agent];
-    const rates = COST_CONFIG[model];
-    total += (counts.input / 1e6) * rates.input;
-    total += (counts.output / 1e6) * rates.output;
-  }
-  return total * (3600 / elapsedSeconds());   // annualize to per-hour rate
-}
-
-const hourlyCost = estimatedHourlyCost(tokenCounts, AGENT_MODEL_MAP);
-if (hourlyCost > config.cost_guardrail_per_hour) {
-  console.warn(`COST GUARDRAIL: ~$${hourlyCost.toFixed(2)}/hr — suspending P2/P3 agents`);
-  // Pause non-critical agents, continue only P0/P1 work
-  for (const agent of ['a11y-tester', 'load-tester']) {
-    rf-pause ${agent}
-  }
-  bd create `COST ALERT: Guardrail hit at $${hourlyCost.toFixed(2)}/hr — P2/P3 agents paused` -t task -p 1
-}
-```
-
----
-
-## A7. Early Abort on Catastrophic Pass Rate (loop logic gap)
-
-The base spec only stops early if `pass_rate < 0.95` after the full 10 iterations. There is
-no early abort if the target is fundamentally broken. Add this check after the first two
-iterations:
-
-```
-// Add to qa-lead LOOP after EVALUATE step, before GOTO:
-
-if (iteration >= 2 && pass_rate < config.min_pass_rate_to_continue) {
-  bd create "UITEST ABORTED: Pass rate ${pass_rate*100}% after iteration ${iteration} — below min threshold ${config.min_pass_rate_to_continue*100}%. Target may be non-functional." -t task -p 0 --flag human
-  // Still generate a partial report so the team has evidence
-  generate_partial_report(iteration, pass_rate, open_bugs)
-  STOP
-}
-```
-
-The existing `min_pass_rate_to_continue: 0.5` config value is now actually enforced. This
-prevents burning 8 more iterations — and most of the cost budget — on an application that
-is fundamentally broken and needs a human before automated testing can proceed.
-
----
-
-## Updated config.json (incorporating all additions)
-
-```json
-{
-  "target_url": "http://localhost:3000",
-  "base_url": "http://localhost:3000",
-  "auth": {
-    "signup_url": "/signup",
-    "login_url": "/login",
-    "logout_url": "/logout",
-    "reset_url": "/forgot-password"
-  },
-  "test_users": {
-    "admin":    { "email": "admin@uitest.local",    "password": "Admin!Test123" },
-    "user":     { "email": "user@uitest.local",     "password": "User!Test456" },
-    "readonly": { "email": "readonly@uitest.local", "password": "Read!Test789" }
-  },
-  "timeouts": {
-    "navigation_ms":   10000,
-    "element_ms":       5000,
-    "network_idle_ms":  3000
-  },
-  "max_fix_iterations": 10,
-  "min_pass_rate_to_continue": 0.5,
-  "early_abort_after_iteration": 2,
-  "browsers": ["chromium", "firefox", "webkit"],
-  "viewports": [
-    { "name": "mobile",  "width": 375,  "height": 812  },
-    { "name": "tablet",  "width": 768,  "height": 1024 },
-    { "name": "desktop", "width": 1280, "height": 720  },
-    { "name": "wide",    "width": 1920, "height": 1080 }
-  ],
-  "cost_guardrail_per_hour": 15,
-  "memory": {
-    "backend": "ruvector",
-    "persist_path": "uitest/.agentdb",
-    "similarity_dedup_threshold": 0.92
-  },
-  "coherence_gate": {
-    "enabled": true,
-    "auto_merge_below": 0.1,
-    "review_below": 0.4,
-    "block_above": 0.4
-  },
-  "audit": {
-    "rvf_artifacts": true,
-    "sign_method": "ed25519",
-    "witness_chain": true
-  },
-  "fuzzing": {
-    "api_params": true,
-    "flag_500_responses": true,
-    "flag_sqli_200_responses": true
-  }
-}
-```
-
----
-
-*Addendum authored against UITEST.md v1.0.0 · Stack additions: RuVector · AgentDB · RVF · Prime Radiant*
